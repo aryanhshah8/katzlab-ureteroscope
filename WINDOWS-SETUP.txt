@@ -1,0 +1,174 @@
+================================================================================
+  KATZLAB URETEROSCOPE - WINDOWS SETUP
+================================================================================
+
+Repo: https://github.com/aryanhshah8/katzlab-ureteroscope   (private)
+
+Nothing in the code is Mac-only. The one thing that WILL stop you: the shipped
+config/controller.yaml is pinned to the Mac's controller enumeration (its GUID
+and SDL backend), so the software refuses to start until you re-calibrate on
+this machine. That is the safety guard working, not a fault -- running with a
+mismatched mapping would put E-STOP on the wrong button.
+
+
+--------------------------------------------------------------------------------
+1. PREREQUISITES
+--------------------------------------------------------------------------------
+
+  - Python 3.11 or newer, from python.org
+      *** TICK "Add Python to PATH" DURING INSTALL ***
+  - Git for Windows
+  - Teensyduino (Arduino IDE + Teensy support) from pjrc.com
+      or:  winget install ArduinoSA.CLI
+
+
+--------------------------------------------------------------------------------
+2. CLONE
+--------------------------------------------------------------------------------
+
+  git clone https://github.com/aryanhshah8/katzlab-ureteroscope.git
+
+  The repo is private -- sign in to GitHub when prompted.
+
+
+--------------------------------------------------------------------------------
+3. PYTHON ENVIRONMENT
+--------------------------------------------------------------------------------
+
+  cd katzlab-ureteroscope\python
+  python -m venv .venv
+  .venv\Scripts\python.exe -m pip install -r requirements.txt
+
+  Every command below uses .venv\Scripts\python.exe so you never have to
+  remember to activate anything.
+
+
+--------------------------------------------------------------------------------
+4. ARDUINO LIBRARY
+--------------------------------------------------------------------------------
+
+  Arduino IDE -> Tools -> Manage Libraries -> search "SCServo" -> Install
+
+  Without it the firmware will not compile.
+
+
+--------------------------------------------------------------------------------
+5. CHECK THE TEENSY IS SEEN
+--------------------------------------------------------------------------------
+
+  Plug the Teensy's micro-USB into the laptop, then:
+
+  .venv\Scripts\python.exe -m katzlab ports
+
+  You want a COMx line showing VID 16C0. Note the COM number.
+
+
+--------------------------------------------------------------------------------
+6. CALIBRATE THE CONTROLLER  -- MANDATORY, DO NOT SKIP
+--------------------------------------------------------------------------------
+
+  Plug the controller into the laptop, then:
+
+  .venv\Scripts\python.exe scripts\calibrate_controller.py
+
+  Follow the prompts:
+      Left stick        left then right
+      Right stick       UP then DOWN      (this is ROTATION)
+      Right stick       LEFT then RIGHT   (this is FLEXION)
+      Then buttons:     LB, LT, RB, RT, X, H
+
+  If a control does not register, run this to see every axis and button live:
+
+  .venv\Scripts\python.exe scripts\gamepad_monitor.py
+
+
+--------------------------------------------------------------------------------
+7. FLASH THE FIRMWARE
+--------------------------------------------------------------------------------
+
+  *** SWITCH THE LASER RELAY SUPPLY OFF FIRST ***
+  Pin 8 is on the relay's NC terminal, so the upload window arms the laser.
+
+  Option A -- Arduino IDE:
+      Open  firmware\Motion_Velocity_Server\Motion_Velocity_Server.ino
+      Tools -> Board -> Teensy 4.1
+      Upload
+
+  Option B -- arduino-cli (replace COM3 with your port):
+      arduino-cli core install teensy:avr --additional-urls https://www.pjrc.com/teensy/package_teensy_index.json
+      arduino-cli compile --fqbn teensy:avr:teensy41 ..\firmware\Motion_Velocity_Server
+      arduino-cli upload  --fqbn teensy:avr:teensy41 -p COM3 ..\firmware\Motion_Velocity_Server
+
+
+--------------------------------------------------------------------------------
+8. VERIFY, THEN RUN
+--------------------------------------------------------------------------------
+
+  .venv\Scripts\python.exe -m katzlab selftest
+  .venv\Scripts\python.exe -m katzlab bringup --skip-flash --yes
+
+  Controls:
+      Left stick        linear travel
+      Right stick U/D   rotation
+      Right stick L/R   flexion
+      LB                Enable + Ready       LT   Standby
+      RB                Fire                 RT   Pause
+      X                 EMERGENCY STOP       H    Home (hold 0.6 s)
+
+
+--------------------------------------------------------------------------------
+WINDOWS DIFFERENCES
+--------------------------------------------------------------------------------
+
+  Emergency stop:     taskkill /F /IM python.exe
+                      (cutting the relay supply is still the REAL stop)
+
+  Port auto-detect wrong?  Set it explicitly in config\system.yaml:
+                      link:
+                        port: COM3
+
+  Everything else in config\system.yaml carries over unchanged -- the 3.0 s
+  ready edge, fire polarity, and all the motion tuning. Only controller.yaml
+  is specific to a machine.
+
+
+--------------------------------------------------------------------------------
+USEFUL COMMANDS
+--------------------------------------------------------------------------------
+
+  .venv\Scripts\python.exe -m katzlab bringup --skip-flash --yes
+  .venv\Scripts\python.exe -m katzlab bringup --skip-flash --yes --no-laser
+  .venv\Scripts\python.exe -m katzlab bringup --yes                  (reflash)
+  .venv\Scripts\python.exe -m katzlab monitor                        (raw serial)
+  .venv\Scripts\python.exe -m katzlab diagnose-laser                 (never fires)
+  .venv\Scripts\python.exe -m katzlab find-polarity                  (never fires)
+  .venv\Scripts\python.exe -m katzlab bench                          (measures mm/s)
+  .venv\Scripts\python.exe -m pytest tests\ -q                       (73 tests)
+
+
+--------------------------------------------------------------------------------
+SAFETY
+--------------------------------------------------------------------------------
+
+  READY_ON_NC is true, meaning pin 8 sits on the relay's NC terminal. The ready
+  contact is CLOSED -- the laser ARMED -- whenever the coil is de-energised. A
+  reset, replug, firmware upload, loose jumper or loss of relay supply will arm
+  the laser with nobody commanding it.
+
+    -> De-energise the relay supply before flashing.
+    -> Do not leave the rig energised unattended.
+
+  The proper fix is hardware: move the pin 8 wire from the relay's NC terminal
+  to its NO terminal, then set READY_ON_NC = false in
+  shootingyesready_inoF-1.ino and regenerate the firmware:
+
+      .venv\Scripts\python.exe scripts\build_velocity_firmware.py
+
+  That makes de-energised mean standby, so power loss becomes fail safe.
+
+  Standby is a SOFTWARE disarm on this rig -- it parks the fire channels and
+  locks the software but does not open the ready contact, because on this
+  wiring doing so ARMS the machine. The real disarm is the Dornier's own
+  standby or cutting the relay supply.
+
+================================================================================
