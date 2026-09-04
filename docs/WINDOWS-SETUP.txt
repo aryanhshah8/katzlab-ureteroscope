@@ -90,7 +90,7 @@ mismatched mapping would put E-STOP on the wrong button.
   Pin 8 is on the relay's NC terminal, so the upload window arms the laser.
 
   Option A -- Arduino IDE:
-      Open  firmware\Motion_Velocity_Server\Motion_Velocity_Server.ino
+      Open  ..\firmware\Motion_Velocity_Server\Motion_Velocity_Server.ino
       Tools -> Board -> Teensy 4.1
       Upload
 
@@ -117,6 +117,53 @@ mismatched mapping would put E-STOP on the wrong button.
 
 
 --------------------------------------------------------------------------------
+WHAT YOU GET WHILE RUNNING
+--------------------------------------------------------------------------------
+
+  A live line, redrawn in place, showing where the scope is right now:
+
+      lin    2.753 mm | rot   20.97 deg | flex   -9.64 deg | v  +2.50 mm/s | armed
+
+  Hide it with --no-status.
+
+  Every session also writes a CSV to python\logs\motion-<timestamp>.csv :
+
+      t_s, wall_clock, linear_mm, rotation_deg, flexion_deg,
+      linear_mm_s, rotation_deg_s,
+      laser_enabled, laser_ready, laser_firing, estopped, event
+
+  One row per sample at 20 Hz, plus a forced row on every operator action --
+  arm, fire, home, e-stop -- tagged in the `event` column, so a shot can be
+  read against the position it happened at. Opens in Excel, pandas or MATLAB.
+
+  Turn it off with --no-record, or logging.record_motion: false in
+  config\system.yaml. Sample rate is logging.record_hz.
+
+
+--------------------------------------------------------------------------------
+REPO LAYOUT
+--------------------------------------------------------------------------------
+
+  README.md                        start here
+  firmware\
+    Motion_Velocity_Server\        <- flash this            (generated)
+    Combined_Motion_Laser\         older build              (generated)
+    src\                           hand-maintained motion core
+    original\                      the original sketches, source of truth
+  python\
+    katzlab\                       the control system
+    config\                        system.yaml, controller.yaml
+    scripts\                       calibration, diagnostics, firmware builds
+    tests\                         80 tests
+    logs\                          session CSVs land here
+  docs\
+
+  Firmware is GENERATED. Edit the originals, then regenerate:
+
+      .venv\Scripts\python.exe scripts\build_velocity_firmware.py
+
+
+--------------------------------------------------------------------------------
 WINDOWS DIFFERENCES
 --------------------------------------------------------------------------------
 
@@ -138,12 +185,14 @@ USEFUL COMMANDS
 
   .venv\Scripts\python.exe -m katzlab bringup --skip-flash --yes
   .venv\Scripts\python.exe -m katzlab bringup --skip-flash --yes --no-laser
+  .venv\Scripts\python.exe -m katzlab bringup --skip-flash --yes --no-record
+  .venv\Scripts\python.exe -m katzlab bringup --skip-flash --yes --no-status
   .venv\Scripts\python.exe -m katzlab bringup --yes                  (reflash)
   .venv\Scripts\python.exe -m katzlab monitor                        (raw serial)
   .venv\Scripts\python.exe -m katzlab diagnose-laser                 (never fires)
   .venv\Scripts\python.exe -m katzlab find-polarity                  (never fires)
   .venv\Scripts\python.exe -m katzlab bench                          (measures mm/s)
-  .venv\Scripts\python.exe -m pytest tests\ -q                       (73 tests)
+  .venv\Scripts\python.exe -m pytest tests\ -q                       (80 tests)
 
 
 --------------------------------------------------------------------------------
@@ -160,7 +209,8 @@ SAFETY
 
   The proper fix is hardware: move the pin 8 wire from the relay's NC terminal
   to its NO terminal, then set READY_ON_NC = false in
-  shootingyesready_inoF-1.ino and regenerate the firmware:
+  firmware\original\shootingyesready_inoF-1\shootingyesready_inoF-1.ino
+  and regenerate the firmware:
 
       .venv\Scripts\python.exe scripts\build_velocity_firmware.py
 
