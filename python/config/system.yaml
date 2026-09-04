@@ -1,0 +1,179 @@
+# KatzLab ureteroscope control - system configuration
+#
+# Every calibration constant that also exists in the firmware is mirrored here.
+# Python pre-clamps against these limits so the firmware never has to reject a
+# command; the firmware limits remain the authoritative backstop.
+
+link:
+  # single = one Teensy running the merged Combined_Motion_Laser sketch
+  # split  = two Teensys, one per original sketch
+  mode: single
+  baud: 115200
+  # "auto" picks the first USB-modem style port that answers the handshake.
+  port: auto
+  motion_port: auto     # used only when mode = split
+  laser_port: auto      # used only when mode = split
+  connect_timeout_s: 8.0
+  read_timeout_s: 6.0
+
+input:
+  # mac_gamepad = controller plugged into the MacBook, read here via pygame
+  # teensy_host = controller plugged into the Teensy USB host port, state
+  #               streamed up the serial link (needs the firmware input bridge)
+  source: mac_gamepad
+  poll_hz: 60
+  # Small: the sticks on this pad rest at 0.000, measured, so there is no
+  # drift to suppress. Only raise this if a stick starts creeping at rest.
+  deadzone: 0.04
+  expo: 0.35            # 0 = perfectly linear, 1 = maximum fine control near centre
+
+  # Per-axis overrides. Higher = more of the stick's travel spent in the slow
+  # end, so the same wrist movement changes that axis less. Flexion is the
+  # twitchiest control on the rig, so it gets the most.
+  axis_expo:
+    flexion: 0.25
+    linear: 0.0     # perfectly linear: stick position maps straight to speed
+
+  # Per-axis deadzone overrides. Flexion is a fine-positioning axis and this
+  # pad's sticks measure 0.000 at rest, so it can afford a much smaller one --
+  # the tip starts responding almost as soon as the stick leaves centre.
+  axis_deadzone:
+    flexion: 0.015
+
+motion:
+  # velocity = Motion_Velocity_Server.ino. The host sets a target SPEED per
+  #            axis and the firmware ramps toward it, stepping continuously.
+  #            Smooth, proportional to stick deflection, and stoppable instantly
+  #            because nothing blocks. This is the one to use.
+  # chunked  = Combined_Motion_Laser.ino. One blocking move per command, so the
+  #            motor comes to a full stop between chunks. Kept because it is the
+  #            only mode that runs the original sketches unmodified.
+  protocol: velocity
+
+  # Upper bound on command rate, not a target. Each command blocks until the
+  # firmware finishes the move, so the firmware is the real rate limiter -- this
+  # only stops us busy-spamming if a command ever returns instantly. Setting it
+  # low just inserts dead time between moves.
+  loop_hz: 50
+
+  # STEP pulse half-period sent to the firmware at startup as [v<us>].
+  # 800 us (the sketch default) = 625 pulses/s = 1.56 mm/s, and that is a hard
+  # ceiling however good the duty cycle is. There is NO acceleration ramp, so
+  # this is the rate the motor starts at from standstill: too low and it stalls
+  # instead of turning. Tune by halving until it slips, then back off.
+  #   800 us -> 1.56 mm/s      400 us -> 3.13 mm/s
+  #   200 us -> 6.25 mm/s      100 us -> 12.5 mm/s
+  # Only used by protocol: chunked. Velocity mode derives its step interval
+  # from the commanded speed instead.
+  step_delay_us: 200
+
+  linear:
+    # In velocity mode this is the speed at full stick deflection, and the
+    # firmware ramps into it -- so it can be far higher than the chunked mode's
+    # standing-start ceiling. Raise it until the motor slips, then back off.
+    max_rate_mm_s: 2.5
+    min_mm: 0.0
+    max_mm: 177.0
+    # Longest single blocking move. Bigger = better duty cycle (less per-command
+    # overhead) but slower e-stop. 0.5 mm at 3 mm/s is ~170 ms worst case.
+    max_chunk_mm: 0.80
+
+  rotation:
+    max_rate_deg_s: 20.0   # scope degrees, after the 2.5:1 gear reduction
+    max_chunk_deg: 5.0
+
+  flexion:
+    # Tip degrees per second at full stick. Deliberately slow: this is the
+    # only axis whose travel is inside the patient, and the servo has to
+    # actually keep up with the target or it stutters.
+    max_rate_deg_s: 8.0
+    # Only re-command the servo once intent has drifted this far.
+    #
+    # Size this against max_rate_deg_s: the interval between servo commands is
+    # deadband / rate. At 8 deg/s a 4 deg deadband is one hop every half second,
+    # which is visibly steppy; 0.5 deg gives a command every ~60 ms, which reads
+    # as continuous. Too small and the servo is re-commanded faster than it can
+    # act, which brings back the stutter.
+    command_deadband_deg: 0.3
+
+    # Pushed to the firmware at startup as [D<deg>]. Keep it below
+    # command_deadband_deg -- the host is the coarse gate, this is the fine one.
+    firmware_deadband_deg: 0.15
+    min_deg: -270.0
+    max_deg: 270.0
+    caution_deg: 150.0     # mirrors the firmware overstretch warning ladder
+    warning_deg: 200.0
+    major_deg: 250.0
+
+laser:
+  # Fire-channel polarity, pushed to the firmware at startup.
+  #
+  # false = relay on NO: contact OPEN at rest, CLOSES to fire. Normal.
+  # true  = relay on NC: contact CLOSED at rest, OPENS to fire.
+  #
+  # If arming the laser is by itself enough to make it fire, the fire relays are
+  # landed on NC terminals and the fire circuit is already made before anything
+  # commands it. Set the affected channel true.
+  #
+  # WARNING: an inverted channel is ENERGISED at rest, and the machine may
+  # complain continuously while it sits like that. This is a workaround for the
+  # wiring, not a fix -- moving the wire to the NO terminal is the fix.
+  fire_ch1_invert: false
+  fire_ch2_invert: false
+
+  # Once a fire starts, hold the contacts closed for at least this long even if
+  # the button is already released. A quick tap otherwise produces a pulse only
+  # as long as your finger was down, which the machine can register as a press
+  # without ever completing a shot -- "it powers up but only goes half way".
+  min_fire_duration_s: 0.6
+
+  # Hard ceiling. The contacts open at this point no matter what the button says
+  # or what state tracking believes. A laser that fires until something asks it
+  # to stop is one lost frame away from firing indefinitely.
+  max_fire_duration_s: 10.0
+
+  # Whether Standby and E-stop are allowed to drive the READY contact.
+  #
+  # false on this rig, for a specific reason: the machine arms on the contact
+  # going to its "open" level, and Standby drives exactly that level and HOLDS
+  # it -- so Standby armed the machine instead of disarming it. Arming works
+  # because [r] passes through that level and then settles back, i.e. the
+  # machine wants a PULSE, not a held state.
+  #
+  # With this false, Standby and E-stop park the FIRE channels and lock the
+  # software, but leave the ready contact alone. The machine may therefore stay
+  # physically armed. It cannot fire -- the fire contacts are idle and the
+  # software refuses -- but the real hardware disarm is the Dornier's own
+  # standby or cutting the relay supply. Set true if the wiring is ever changed
+  # so that Standby genuinely disarms.
+  standby_drives_ready: false
+
+  # The machine arms on the ready contact's open->close EDGE, not on its level.
+  # If it does not reliably see the OPEN half, the close never registers and
+  # arming becomes intermittent. The firmware holds it open for 200 ms; this
+  # adds a host-side open period on top, which is far easier to tune than
+  # reflashing. Raise it if arming is unreliable.
+  # 3.0 s, determined on hardware: below this the machine only half-arms.
+  # This is how long the ready contact is held in the state the machine reads
+  # before the closing edge -- effectively "how long the ready button is held".
+  ready_edge_open_s: 3.0
+
+  # momentary = fire while the button is held, release returns to idle
+  # latched   = press to start firing, press again to stop
+  fire_mode: momentary
+  require_ready_before_fire: true
+  # Firmware enforces its own dwell timers; these keep Python from queueing
+  # commands the firmware is only going to sit on.
+  arm_dwell_s: 0.5
+  release_dwell_s: 0.4
+
+safety:
+  # If no fresh controller frame arrives inside this window, park everything.
+  watchdog_timeout_s: 0.5
+  estop_on_controller_loss: true
+  # Refuse to arm the laser at startup; operator must press Enable/Ready.
+  start_disarmed: true
+
+logging:
+  level: INFO
+  session_log_dir: logs

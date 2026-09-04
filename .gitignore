@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Session logs
+python/logs/
+
+# Arduino build output
+build/
+*.hex
+*.elf
+
+# macOS
+.DS_Store
