@@ -263,9 +263,13 @@ def cmd_run(args, cfg: SystemConfig) -> int:
     loop.recorder = start_recorder(
         cfg, cfg.logging.record_motion and not getattr(args, "no_record", False)
     )
+    status = None if getattr(args, "no_status", False) else make_status_line(
+        cfg, laser is not None
+    )
     try:
-        loop.run()
+        loop.run(status_callback=status)
     finally:
+        print()
         if loop.recorder is not None:
             loop.recorder.close()
         source.close()
@@ -446,9 +450,13 @@ def cmd_bringup(args, cfg: SystemConfig) -> int:
     loop.recorder = start_recorder(
         cfg, cfg.logging.record_motion and not getattr(args, "no_record", False)
     )
+    status = None if getattr(args, "no_status", False) else make_status_line(
+        cfg, laser is not None
+    )
     try:
-        loop.run()
+        loop.run(status_callback=status)
     finally:
+        print()
         if loop.recorder is not None:
             loop.recorder.close()
         source.close()
@@ -870,6 +878,46 @@ def start_recorder(cfg: SystemConfig, enabled: bool) -> SessionRecorder | None:
     return recorder
 
 
+def make_status_line(cfg: SystemConfig, has_laser: bool):
+    """A single line, redrawn in place, showing where the scope actually is.
+
+    The CSV answers "what happened"; this answers "what is happening". Printed
+    on \r so it stays on one line, and rate-limited so it never competes with
+    the log for the serial budget or the terminal.
+    """
+    state = {"last": 0.0}
+
+    def render(status: dict) -> None:
+        now = time.monotonic()
+        if now - state["last"] < 0.15:
+            return
+        state["last"] = now
+
+        motion = status["motion"]
+        laser = status["laser"]
+
+        parts = [
+            f"lin {getattr(motion, 'linear_mm', 0.0):8.3f} mm",
+            f"rot {getattr(motion, 'rotation_map_deg', 0.0):8.2f}\u00b0",
+            f"flex {getattr(motion, 'flexion_tip_deg', 0.0):7.2f}\u00b0",
+            f"v {getattr(motion, 'linear_velocity_mm_s', 0.0):+6.2f} mm/s",
+        ]
+        if has_laser and laser is not None:
+            if laser.firing:
+                parts.append("LASER FIRING")
+            elif laser.armed:
+                parts.append("armed")
+            else:
+                parts.append("safe ")
+        if status["estopped"]:
+            parts.append("E-STOP")
+
+        sys.stdout.write("\r\033[K  " + " | ".join(parts))
+        sys.stdout.flush()
+
+    return render
+
+
 def print_banner(
     cfg: SystemConfig, controller_name: str, has_laser: bool, *, dry_run: bool = False
 ) -> None:
@@ -918,6 +966,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-record", action="store_true", help="do not write a motion CSV"
     )
     bring.add_argument(
+        "--no-status", action="store_true", help="hide the live position line"
+    )
+    bring.add_argument(
         "--ready-open",
         type=float,
         metavar="SECONDS",
@@ -954,6 +1005,9 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="run the joystick control loop")
     run.add_argument(
         "--no-record", action="store_true", help="do not write a motion CSV"
+    )
+    run.add_argument(
+        "--no-status", action="store_true", help="hide the live position line"
     )
     run.add_argument(
         "--debug-buttons",

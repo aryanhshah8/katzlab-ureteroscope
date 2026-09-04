@@ -151,7 +151,7 @@ Emergency: `pkill -f katzlab`, then cut the relay supply. Cutting power is the
 only real stop — a motion command in flight cannot be interrupted mid-move in
 chunked mode, and the laser relays have not behaved as the software expects.
 
-Firmware is generated, never hand-edited:
+Firmware is generated, never hand-edited (paths are relative to `python/`):
 ```bash
 ./.venv/bin/python scripts/build_velocity_firmware.py   # motion core + laser verbatim
 ./.venv/bin/python scripts/build_merged_firmware.py     # the older chunked build

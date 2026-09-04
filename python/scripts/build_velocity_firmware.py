@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 CORE = ROOT / "firmware" / "src" / "velocity_motion_core.inc"
-LASER_SRC = ROOT / "shootingyesready_inoF-1" / "shootingyesready_inoF-1.ino"
+LASER_SRC = ROOT / "firmware" / "original" / "shootingyesready_inoF-1" / "shootingyesready_inoF-1.ino"
 OUT_DIR = ROOT / "firmware" / "Motion_Velocity_Server"
 OUT_FILE = OUT_DIR / "Motion_Velocity_Server.ino"
 

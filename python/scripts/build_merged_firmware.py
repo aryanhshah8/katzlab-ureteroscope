@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-MOTION_SRC = ROOT / "3DOF_MovementF" / "3DOF_MovementF.ino"
-LASER_SRC = ROOT / "shootingyesready_inoF-1" / "shootingyesready_inoF-1.ino"
+MOTION_SRC = ROOT / "firmware" / "original" / "3DOF_MovementF" / "3DOF_MovementF.ino"
+LASER_SRC = ROOT / "firmware" / "original" / "shootingyesready_inoF-1" / "shootingyesready_inoF-1.ino"
 OUT_DIR = ROOT / "firmware" / "Combined_Motion_Laser"
 OUT_FILE = OUT_DIR / "Combined_Motion_Laser.ino"
 
