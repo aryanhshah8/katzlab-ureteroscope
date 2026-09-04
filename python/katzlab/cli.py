@@ -25,6 +25,7 @@ from .config import (
 )
 from .control import ControlLoop
 from .drivers import LaserDriver, MotionDriver, VelocityMotionDriver
+from .recorder import SessionRecorder
 from .input import InputUnavailable, create_input_source
 from .transport import Link, LinkError, list_candidate_ports, resolve_port
 
@@ -259,9 +260,14 @@ def cmd_run(args, cfg: SystemConfig) -> int:
 
     loop = ControlLoop(cfg, source, motion, laser)
     loop.debug_buttons = getattr(args, "debug_buttons", False)
+    loop.recorder = start_recorder(
+        cfg, cfg.logging.record_motion and not getattr(args, "no_record", False)
+    )
     try:
         loop.run()
     finally:
+        if loop.recorder is not None:
+            loop.recorder.close()
         source.close()
         if motion_link is not None:
             motion_link.close()
@@ -437,9 +443,14 @@ def cmd_bringup(args, cfg: SystemConfig) -> int:
 
     loop = ControlLoop(cfg, source, motion, laser)
     loop.debug_buttons = getattr(args, "debug_buttons", False)
+    loop.recorder = start_recorder(
+        cfg, cfg.logging.record_motion and not getattr(args, "no_record", False)
+    )
     try:
         loop.run()
     finally:
+        if loop.recorder is not None:
+            loop.recorder.close()
         source.close()
         motion_link.close()
         if laser_link is not None and laser_link is not motion_link:
@@ -848,6 +859,17 @@ def cmd_find_polarity(args, cfg: SystemConfig) -> int:
     return 0
 
 
+def start_recorder(cfg: SystemConfig, enabled: bool) -> SessionRecorder | None:
+    """Open a CSV recorder for this session, if recording is on."""
+    if not enabled:
+        return None
+    directory = Path(__file__).resolve().parent.parent / cfg.logging.session_log_dir
+    recorder = SessionRecorder(directory, rate_hz=cfg.logging.record_hz)
+    path = recorder.open()
+    print(f"  Recording motion to {path}")
+    return recorder
+
+
 def print_banner(
     cfg: SystemConfig, controller_name: str, has_laser: bool, *, dry_run: bool = False
 ) -> None:
@@ -893,6 +915,9 @@ def build_parser() -> argparse.ArgumentParser:
     bring.add_argument("--skip-flash", action="store_true", help="firmware is already flashed")
     bring.add_argument("--no-laser", action="store_true", help="motion only")
     bring.add_argument(
+        "--no-record", action="store_true", help="do not write a motion CSV"
+    )
+    bring.add_argument(
         "--ready-open",
         type=float,
         metavar="SECONDS",
@@ -927,6 +952,9 @@ def build_parser() -> argparse.ArgumentParser:
     findpol.add_argument("--yes", action="store_true", help="skip the confirmation")
 
     run = sub.add_parser("run", help="run the joystick control loop")
+    run.add_argument(
+        "--no-record", action="store_true", help="do not write a motion CSV"
+    )
     run.add_argument(
         "--debug-buttons",
         action="store_true",

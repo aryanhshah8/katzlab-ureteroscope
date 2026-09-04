@@ -34,6 +34,7 @@ from .drivers import LaserDriver, LaserState, MotionDriver, MotionState
 from .drivers.laser import LaserError
 from .drivers.motion import MotionError
 from .input import ControllerFrame, EdgeTracker, InputSource, InputUnavailable
+from .recorder import SessionRecorder
 
 log = logging.getLogger(__name__)
 
@@ -116,6 +117,7 @@ class ControlLoop:
         self._fire_started_at: float | None = None
         self._laser_action_at: dict[str, float] = {}
         self.debug_buttons = False
+        self.recorder: SessionRecorder | None = None
 
     @property
     def stats(self) -> LoopStats:
@@ -160,6 +162,13 @@ class ControlLoop:
                     # run it every tick for the tightest stick response.
                     if self._velocity_mode or elapsed >= motion_period:
                         self._service_motion(frame, elapsed)
+
+                if self.recorder is not None:
+                    self.recorder.sample(
+                        self._motion.state,
+                        self._laser.state if self._laser else None,
+                        estopped=self._estopped,
+                    )
 
                 if status_callback is not None:
                     status_callback(self.status())
@@ -342,6 +351,9 @@ class ControlLoop:
             return self._laser.state
         self._laser_action_at[action] = now
 
+        if self.recorder is not None:
+            self.recorder.mark(f"laser_{action}")
+
         state = getattr(self._laser, action)()
         self._stats.laser_commands += 1
         log.info("laser %s -> %s", action, state.describe())
@@ -372,6 +384,8 @@ class ControlLoop:
         which it did not when this was one blocking firmware command.
         """
         log.info("home requested -- press X to abort")
+        if self.recorder is not None:
+            self.recorder.mark("home")
 
         def should_abort() -> bool:
             frame = self._poll()
@@ -488,6 +502,8 @@ class ControlLoop:
             return
         self._estopped = True
         self._stats.estops += 1
+        if self.recorder is not None:
+            self.recorder.mark(f"ESTOP: {reason}")
         self._fire_started_at = None      # never let a latch outlive an e-stop
         self._laser_action_at.clear()     # cooldown must never delay a stop
         log.critical("E-STOP: %s", reason)

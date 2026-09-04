@@ -108,6 +108,27 @@ wire to NO and setting `READY_ON_NC = false` makes power loss fail safe.
 
 ---
 
+## Motion recording
+
+Every session writes `python/logs/motion-<timestamp>.csv` -- one row per sample
+at 20 Hz, plus a forced row on every operator action.
+
+| column | |
+|---|---|
+| `t_s`, `wall_clock` | seconds since start, and an ISO timestamp |
+| `linear_mm` | carriage position |
+| `rotation_deg` | ureteroscope rotation, after the 2.5:1 reduction |
+| `flexion_deg` | tip flexion angle |
+| `linear_mm_s`, `rotation_deg_s` | velocities |
+| `laser_enabled/ready/firing`, `estopped` | state |
+| `event` | blank except on arm / fire / home / e-stop |
+
+Events force a row and flush immediately, so a fire is never dropped to keep
+the sample cadence and never lost to a crash.
+
+Off with `--no-record`, or `logging.record_motion: false`. Rate is
+`logging.record_hz`.
+
 ## Commands
 
 ```bash
@@ -136,4 +157,4 @@ Firmware is generated, never hand-edited:
 ./.venv/bin/python scripts/build_merged_firmware.py     # the older chunked build
 ```
 
-73 tests: `./.venv/bin/python -m pytest tests/ -q`
+80 tests: `./.venv/bin/python -m pytest tests/ -q`

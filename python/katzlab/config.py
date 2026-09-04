@@ -162,6 +162,8 @@ class SafetyConfig:
 class LoggingConfig:
     level: str = "INFO"
     session_log_dir: str = "logs"
+    record_motion: bool = True
+    record_hz: float = 20.0
 
 
 @dataclass(frozen=True)

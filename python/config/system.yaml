@@ -177,3 +177,9 @@ safety:
 logging:
   level: INFO
   session_log_dir: logs
+
+  # Record joint positions to CSV for every session: linear mm, rotation deg,
+  # flexion deg, both velocities, laser state, and an event column marking arm
+  # / fire / home / e-stop. Written to <session_log_dir>/motion-<timestamp>.csv
+  record_motion: true
+  record_hz: 20
