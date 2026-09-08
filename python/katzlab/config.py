@@ -134,6 +134,7 @@ class LaserConfig:
     max_fire_duration_s: float = 10.0
     ready_edge_open_s: float = 3.0
     standby_drives_ready: bool = False
+    estop_drives_ready: bool = True
     fire_ch1_invert: bool = False
     fire_ch2_invert: bool = False
     require_ready_before_fire: bool = True

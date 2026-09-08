@@ -158,6 +158,16 @@ laser:
   # circuit the machine treats as a level rather than an edge.
   standby_drives_ready: false
 
+  # E-stop is the exception to the above.
+  #
+  # Standby leaves the ready contact alone because driving it can arm rather
+  # than disarm on this wiring. E-stop is a different trade: it is the control
+  # you reach for when something is wrong, so it drives the contact anyway and
+  # takes the chance, on top of parking the fire channels and locking the
+  # software. Worst case it arms a machine that still cannot fire; best case it
+  # genuinely disarms. Set false to make E-stop behave like Standby.
+  estop_drives_ready: true
+
   # The machine arms on the ready contact's open->close EDGE, not on its level.
   # If it does not reliably see the OPEN half, the close never registers and
   # arming becomes intermittent. The firmware holds it open for 200 ms; this

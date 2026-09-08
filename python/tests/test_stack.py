@@ -868,3 +868,89 @@ def test_operator_standby_still_leaves_ready_alone(link, sim):
     assert sim.ready == ready_before
     assert laser.state.ready is False
     assert sim.firing is False
+
+
+# --------------------------------------------------------------------------
+# e-stop vs standby: different trades on the ready contact
+# --------------------------------------------------------------------------
+
+
+def test_estop_drives_the_ready_contact_even_though_standby_does_not(link, sim):
+    """E-stop is the exception to leaving the ready line alone.
+
+    Standby avoids it because on this wiring driving it can arm rather than
+    disarm. E-stop takes that chance anyway: leaving a machine armed after
+    someone hit the panic button is the worse of the two failures.
+    """
+    import dataclasses
+
+    base = load_system_config()
+    cfg = dataclasses.replace(
+        base,
+        laser=dataclasses.replace(
+            base.laser, standby_drives_ready=False, estop_drives_ready=True
+        ),
+    )
+    motion = MotionDriver(link, cfg.motion)
+    motion.sync(timeout_s=3.0)
+    laser = LaserDriver(link, cfg.laser)
+    laser.arm()
+    loop = ControlLoop(cfg, ScriptedInput([ControllerFrame(buttons=_no_buttons())]), motion, laser)
+
+    before = len(sim.received)
+    loop._trigger_estop("test")
+    issued = sim.received[before:]
+
+    assert "x" in issued, f"e-stop did not drive the ready contact: {issued}"
+    assert sim.ready is False, "machine left ready after an e-stop"
+    assert sim.firing is False
+    assert not laser.state.armed
+
+
+def test_standby_still_leaves_the_ready_contact_alone(link, sim):
+    """The e-stop change must not leak into Standby."""
+    import dataclasses
+
+    base = load_system_config()
+    cfg = dataclasses.replace(
+        base,
+        laser=dataclasses.replace(
+            base.laser, standby_drives_ready=False, estop_drives_ready=True
+        ),
+    )
+    laser = LaserDriver(link, cfg.laser)
+    laser.arm()
+    ready_before = sim.ready
+    before = len(sim.received)
+
+    laser.standby()
+
+    issued = sim.received[before:]
+    assert "s" not in issued and "x" not in issued, (
+        f"standby drove the ready contact: {issued}"
+    )
+    assert sim.ready == ready_before
+
+
+def test_estop_can_be_told_to_leave_ready_alone_too(link, sim):
+    import dataclasses
+
+    base = load_system_config()
+    cfg = dataclasses.replace(
+        base,
+        laser=dataclasses.replace(
+            base.laser, standby_drives_ready=False, estop_drives_ready=False
+        ),
+    )
+    motion = MotionDriver(link, cfg.motion)
+    motion.sync(timeout_s=3.0)
+    laser = LaserDriver(link, cfg.laser)
+    laser.arm()
+    loop = ControlLoop(cfg, ScriptedInput([ControllerFrame(buttons=_no_buttons())]), motion, laser)
+
+    before = len(sim.received)
+    loop._trigger_estop("test")
+
+    assert "x" not in sim.received[before:]
+    assert sim.firing is False, "fire channels must be parked regardless"
+    assert not laser.state.armed, "software must lock out regardless"

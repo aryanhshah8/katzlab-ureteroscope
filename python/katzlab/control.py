@@ -524,7 +524,14 @@ class ControlLoop:
 
         if self._laser is not None:
             try:
-                state = self._laser.stop()
+                # force_ready drives the READY contact even though Standby is
+                # configured not to. Standby avoids it because on this wiring it
+                # can arm rather than disarm; an e-stop takes that chance,
+                # because leaving a machine armed after someone hit the panic
+                # button is the worse of the two failures.
+                state = self._laser.stop(
+                    force_ready=self._cfg.laser.estop_drives_ready
+                )
                 log.critical("laser stopped and relocked | %s", state.describe())
             except LaserError as exc:
                 log.critical(
@@ -564,7 +571,7 @@ class ControlLoop:
         if self._laser is not None:
             for attempt in (1, 2):
                 try:
-                    self._laser.stop()
+                    self._laser.stop(force_ready=self._cfg.laser.estop_drives_ready)
                     log.info("laser relocked")
                     break
                 except LaserError as exc:
