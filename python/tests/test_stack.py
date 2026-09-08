@@ -977,9 +977,15 @@ def test_one_arm_press_is_enough_after_an_estop(link, sim):
 
     assert state.ready is True, f"one arm press was not enough: {issued}"
     # A close must precede the open, or the open is not a transition.
-    assert issued[0] in ("?", "r"), f"arm did not check/close the contact first: {issued}"
+    # [e] must come before the pre-closing [r]: the firmware ignores [r] when
+    # the laser is not enabled, and [x] clears that flag -- so a pre-close sent
+    # before enable is a silent no-op. Measured on hardware.
+    assert issued[0] == "e", f"enable did not come first: {issued}"
     assert issued.count("r") >= 2, (
         f"expected a closing [r] before the arming [r]: {issued}"
+    )
+    assert issued.index("e") < issued.index("r"), (
+        f"[r] issued before [e]; the firmware will ignore it: {issued}"
     )
 
 
