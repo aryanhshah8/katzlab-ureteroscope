@@ -954,3 +954,43 @@ def test_estop_can_be_told_to_leave_ready_alone_too(link, sim):
     assert "x" not in sim.received[before:]
     assert sim.firing is False, "fire channels must be parked regardless"
     assert not laser.state.armed, "software must lock out regardless"
+
+
+def test_one_arm_press_is_enough_after_an_estop(link, sim):
+    """The first arm after an e-stop must take, not the second.
+
+    [x] leaves the ready contact OPEN. [r] forces open, settles, then closes --
+    but forcing open does nothing when it is already open, so the machine never
+    saw a complete open->close cycle and the first press silently did nothing.
+    arm() now closes the contact first when it finds it open.
+    """
+    cfg = load_system_config()
+    laser = LaserDriver(link, cfg.laser)
+    laser.arm()
+
+    laser.stop(force_ready=True)          # e-stop: leaves the contact open
+    assert sim.ready is False
+
+    before = len(sim.received)
+    state = laser.arm()                    # ONE press
+    issued = sim.received[before:]
+
+    assert state.ready is True, f"one arm press was not enough: {issued}"
+    # A close must precede the open, or the open is not a transition.
+    assert issued[0] in ("?", "r"), f"arm did not check/close the contact first: {issued}"
+    assert issued.count("r") >= 2, (
+        f"expected a closing [r] before the arming [r]: {issued}"
+    )
+
+
+def test_arm_does_not_add_an_extra_cycle_when_the_contact_is_closed(link, sim):
+    """Only pre-close when it is actually needed -- an extra edge is not free."""
+    cfg = load_system_config()
+    laser = LaserDriver(link, cfg.laser)
+    laser.arm()                            # ends with the contact closed
+
+    before = len(sim.received)
+    laser.arm()                            # contact already closed
+    issued = [l for l in sim.received[before:] if l == "r"]
+
+    assert len(issued) == 1, f"pre-closed unnecessarily: {issued}"

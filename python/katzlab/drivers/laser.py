@@ -38,6 +38,14 @@ CMD_STANDBY = "s"
 CMD_STOP = "x"
 CMD_STATUS = "?"
 
+# Pin 8's level when the ready contact is OPEN.
+#
+# READY_ON_NC is true on this rig: pin 8 sits on the relay's NC terminal, so
+# the coil must be ENERGISED (HIGH) to hold the contact open, and releasing it
+# (LOW) closes the contact and arms. If that wire is ever moved to NO, this
+# flips to 0 along with READY_ON_NC in the firmware.
+READY_OPEN_PIN_LEVEL = 1
+
 
 class LaserError(RuntimeError):
     """A laser command was refused, locally or by the firmware."""
@@ -64,6 +72,8 @@ class LaserState:
 
 class LaserDriver:
     """Speaks the laser sketch's single-character protocol."""
+
+    _READY_OPEN_LEVEL = READY_OPEN_PIN_LEVEL
 
     def __init__(self, link: Link | None, cfg: LaserConfig, *, dry_run: bool = False) -> None:
         self._link = link
@@ -144,6 +154,22 @@ class LaserDriver:
         after each step and retrying the edge once if it did not take.
         """
         for attempt in range(1, attempts + 1):
+            # Make sure the contact starts CLOSED, so the open that follows is a
+            # real transition.
+            #
+            # [r] forces open, settles, then closes -- but forcing open does
+            # nothing when the contact is already open, which is exactly where
+            # [x] leaves it. The machine then never sees a complete
+            # open->close cycle and the first arm after an e-stop silently does
+            # not take; press it again and it works, because by then the contact
+            # is closed. Closing it first makes one press enough from any state.
+            state = self.status()
+            contact_open = state.pin_ready == self._READY_OPEN_LEVEL
+            if contact_open:
+                log.debug("ready contact already open -- closing it first")
+                self._send(CMD_READY, timeout_s=10.0)
+                time.sleep(0.3)
+
             # Guarantee the ready contact is OPEN, and hold it open long enough
             # for the machine to notice, before asking for the closing edge.
             #
