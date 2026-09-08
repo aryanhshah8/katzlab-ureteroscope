@@ -146,6 +146,16 @@ laser:
   # software refuses -- but the real hardware disarm is the Dornier's own
   # standby or cutting the relay supply. Set true if the wiring is ever changed
   # so that Standby genuinely disarms.
+  # false, and it has to be.
+  #
+  # On this wiring ANY transition on the ready line arms the machine -- so
+  # driving it to "open" arms rather than disarms. With this true, startup's
+  # relock drove that line and the rig booted ARMED, which is not acceptable.
+  #
+  # The cost is that Standby cannot open the contact either: it parks the fire
+  # channels and locks the software, but the machine may stay physically ready.
+  # Those two are mutually exclusive until the ready relay is landed on a
+  # circuit the machine treats as a level rather than an edge.
   standby_drives_ready: false
 
   # The machine arms on the ready contact's open->close EDGE, not on its level.

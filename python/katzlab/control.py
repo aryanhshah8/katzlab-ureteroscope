@@ -43,9 +43,13 @@ log = logging.getLogger(__name__)
 # press from launching it.
 HOME_HOLD_S = 0.6
 
-# Minimum gap between two identical laser commands. Long enough that a held or
-# bouncing button cannot re-trigger, short enough to never feel laggy.
-LASER_ACTION_COOLDOWN_S = 0.5
+# Minimum gap between two identical laser commands.
+#
+# 0.5 s was set when a blocking command could re-baseline the edge tracker
+# mid-press, making a held button read as repeated presses. That cause is gone,
+# and half a second is long enough to swallow a genuine second press. Kept only
+# as debounce.
+LASER_ACTION_COOLDOWN_S = 0.12
 
 
 class EmergencyStop(RuntimeError):
