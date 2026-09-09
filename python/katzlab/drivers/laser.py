@@ -163,19 +163,10 @@ class LaserDriver:
             # open->close cycle and the first arm after an e-stop silently does
             # not take; press it again and it works, because by then the contact
             # is closed. Closing it first makes one press enough from any state.
-            # [e] FIRST. The firmware ignores [r] outright unless the laser is
-            # enabled:
-            #
-            #     case 'r': if (!laserEnabled) return true;
-            #
-            # and [x] clears that flag. So after an e-stop the pre-close below
-            # is a silent no-op unless enable has already been sent -- measured
-            # on hardware: the contact stayed open through it.
-            self.enable()
-
             state = self.status()
-            if state.pin_ready == self._READY_OPEN_LEVEL:
-                log.debug("ready contact open -- closing it before the edge")
+            contact_open = state.pin_ready == self._READY_OPEN_LEVEL
+            if contact_open:
+                log.debug("ready contact already open -- closing it first")
                 self._send(CMD_READY, timeout_s=10.0)
                 time.sleep(0.3)
 
@@ -209,7 +200,7 @@ class LaserDriver:
                 log.warning("arm attempt %d: enable not acknowledged", attempt)
                 continue
 
-            state = self.ready()   # the arming edge: open -> settle -> closed
+            state = self.ready()
             if state.ready:
                 log.info("laser armed on attempt %d | %s", attempt, state.describe())
                 return state
