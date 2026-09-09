@@ -169,6 +169,7 @@ def cmd_selftest(_args, cfg: SystemConfig) -> int:
             expo=cfg.input.expo,
             axis_expo=cfg.input.axis_expo,
             axis_deadzone=cfg.input.axis_deadzone,
+            paired_axes=cfg.input.paired_axes,
         )
         source.open()
         frame = source.poll()
@@ -397,7 +398,8 @@ def cmd_bringup(args, cfg: SystemConfig) -> int:
         deadzone=cfg.input.deadzone,
         expo=cfg.input.expo,
         axis_expo=cfg.input.axis_expo,
-            axis_deadzone=cfg.input.axis_deadzone
+            axis_deadzone=cfg.input.axis_deadzone,
+            paired_axes=cfg.input.paired_axes
     )
     source.open()
     print(f"   OK   controller connected: {source.name}")

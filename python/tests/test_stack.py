@@ -1000,3 +1000,71 @@ def test_arm_does_not_add_an_extra_cycle_when_the_contact_is_closed(link, sim):
     issued = [l for l in sim.received[before:] if l == "r"]
 
     assert len(issued) == 1, f"pre-closed unnecessarily: {issued}"
+
+
+# --------------------------------------------------------------------------
+# the right stick is one vector, not two axes
+# --------------------------------------------------------------------------
+
+
+def test_diagonal_push_keeps_its_direction():
+    """A 45-degree push must come out at 45 degrees.
+
+    Per-axis shaping gives a square dead region; with unequal per-axis
+    deadzones the sides differ, so one axis starts responding before the other
+    and the stick no longer points where it was pushed.
+    """
+    from katzlab.input.base import apply_radial_deadzone_and_curve
+
+    x, y = apply_radial_deadzone_and_curve(0.5, 0.5, deadzone=0.03, expo=0.3)
+    assert x == pytest.approx(y, abs=1e-9), "diagonal was skewed"
+
+    # And at an arbitrary angle, not just the symmetric case.
+    import math
+
+    for angle in (0.3, 1.1, 2.5, 4.0):
+        ix, iy = 0.8 * math.cos(angle), 0.8 * math.sin(angle)
+        ox, oy = apply_radial_deadzone_and_curve(ix, iy, 0.03, 0.3)
+        assert math.atan2(oy, ox) == pytest.approx(math.atan2(iy, ix), abs=1e-9)
+
+
+def test_corner_is_not_faster_than_an_edge():
+    """Square-gated pads report ~1.0 on both axes at the corner. Treated
+    independently that is a magnitude of root two -- a diagonal 41% faster
+    than any cardinal direction."""
+    import math
+
+    from katzlab.input.base import apply_radial_deadzone_and_curve
+
+    x, y = apply_radial_deadzone_and_curve(1.0, 1.0, deadzone=0.03, expo=0.3)
+    assert math.hypot(x, y) <= 1.0 + 1e-9, "diagonal exceeds full-scale speed"
+
+
+def test_radial_deadzone_is_circular_not_square():
+    from katzlab.input.base import apply_radial_deadzone_and_curve
+
+    # Inside the circle, both components must be dead even though each one on
+    # its own sits above the threshold.
+    x, y = apply_radial_deadzone_and_curve(0.02, 0.02, deadzone=0.03, expo=0.0)
+    assert (x, y) == (0.0, 0.0)
+
+    # Just outside it, both come alive together.
+    x, y = apply_radial_deadzone_and_curve(0.05, 0.05, deadzone=0.03, expo=0.0)
+    assert x > 0 and y > 0
+    assert x == pytest.approx(y)
+
+
+def test_full_deflection_still_reaches_unity():
+    from katzlab.input.base import apply_radial_deadzone_and_curve
+
+    x, y = apply_radial_deadzone_and_curve(1.0, 0.0, deadzone=0.03, expo=0.3)
+    assert x == pytest.approx(1.0)
+    assert y == pytest.approx(0.0)
+
+
+def test_unpaired_axes_are_unaffected():
+    """Linear is a single axis and must keep its own deadzone and curve."""
+    cfg = load_system_config()
+    assert cfg.input.pair_for("linear") is None
+    assert cfg.input.pair_for("rotation") is not None
+    assert cfg.input.pair_for("flexion") is not None

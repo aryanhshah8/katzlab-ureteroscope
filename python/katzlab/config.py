@@ -59,6 +59,9 @@ class InputConfig:
     # Per-axis overrides of `deadzone`. Only useful where an axis is used for
     # fine positioning and its stick does not drift.
     axis_deadzone: dict[str, float] = field(default_factory=dict)
+    # Axes that are physically one stick, shaped as a vector rather than
+    # independently. Each entry: {"axes": [a, b], "deadzone": f, "expo": f}.
+    paired_axes: list[dict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.source not in ("mac_gamepad", "teensy_host"):
@@ -75,6 +78,13 @@ class InputConfig:
         for axis, value in self.axis_deadzone.items():
             if not 0.0 <= value < 1.0:
                 raise ConfigError(f"input.axis_deadzone.{axis} must be in [0, 1)")
+
+    def pair_for(self, axis: str) -> dict | None:
+        """The stick this axis belongs to, if it is half of one."""
+        for pair in self.paired_axes:
+            if axis in pair.get("axes", ()):
+                return pair
+        return None
 
     def expo_for(self, axis: str) -> float:
         return self.axis_expo.get(axis, self.expo)

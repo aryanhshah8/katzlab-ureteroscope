@@ -10,7 +10,13 @@ from __future__ import annotations
 import logging
 
 from ..config import Binding, ControllerConfig
-from .base import ControllerFrame, InputSource, InputUnavailable, apply_deadzone_and_curve
+from .base import (
+    ControllerFrame,
+    InputSource,
+    InputUnavailable,
+    apply_deadzone_and_curve,
+    apply_radial_deadzone_and_curve,
+)
 from .sdl import NOT_FOUND_HELP, init_joysticks
 
 log = logging.getLogger(__name__)
@@ -34,12 +40,14 @@ class MacGamepadSource(InputSource):
         joystick_index: int = 0,
         axis_expo: dict[str, float] | None = None,
         axis_deadzone: dict[str, float] | None = None,
+        paired_axes: list[dict] | None = None,
     ) -> None:
         self._controller = controller
         self._deadzone = deadzone
         self._expo = expo
         self._axis_expo = axis_expo or {}
         self._axis_deadzone = axis_deadzone or {}
+        self._paired_axes = paired_axes or []
         self._joystick_index = joystick_index
         self._pygame = None
         self._joystick = None
@@ -155,20 +163,65 @@ class MacGamepadSource(InputSource):
         if not self._is_still_attached():
             return ControllerFrame(connected=False)
 
-        axes = {
-            name: self._read_axis(
-                self._controller.axes[name],
-                self._axis_expo.get(name, self._expo),
-                self._axis_deadzone.get(name, self._deadzone),
-            )
-            for name in AXIS_ORDER
-            if name in self._controller.axes
-        }
+        axes = self._read_axes()
         buttons = {
             name: self._read_button(binding)
             for name, binding in self._controller.buttons.items()
         }
         return ControllerFrame(axes=axes, buttons=buttons, connected=True)
+
+    def _read_axes(self) -> dict[str, float]:
+        """Shape every axis, treating declared pairs as one vector.
+
+        Axes named together in `paired_axes` are two halves of one physical
+        stick, so their deadzone and curve are applied to the vector rather
+        than to each half. Everything else is shaped independently as before.
+        """
+        raw = {
+            name: self._raw_shaped_input(self._controller.axes[name])
+            for name in AXIS_ORDER
+            if name in self._controller.axes
+        }
+
+        out: dict[str, float] = {}
+        handled: set[str] = set()
+
+        for pair in self._paired_axes:
+            names = [n for n in pair.get("axes", ()) if n in raw]
+            if len(names) != 2:
+                continue
+            first, second = names
+            x, y = apply_radial_deadzone_and_curve(
+                raw[first],
+                raw[second],
+                float(pair.get("deadzone", self._deadzone)),
+                float(pair.get("expo", self._expo)),
+            )
+            out[first], out[second] = x, y
+            handled.update(names)
+
+        for name, value in raw.items():
+            if name in handled:
+                continue
+            out[name] = apply_deadzone_and_curve(
+                value,
+                self._axis_deadzone.get(name, self._deadzone),
+                self._axis_expo.get(name, self._expo),
+            )
+
+        return out
+
+    def _raw_shaped_input(self, binding: Binding) -> float:
+        """The axis value with only inversion applied -- no deadzone, no curve.
+
+        Shaping is deferred so a paired axis can be shaped as part of its
+        vector instead of on its own.
+        """
+        if binding.source == "button":
+            value = 1.0 if self._raw_button(binding.index) else 0.0
+        else:
+            value = self._raw_axis(binding.index)
+        return -value if binding.invert else value
 
     def _is_still_attached(self) -> bool:
         try:
