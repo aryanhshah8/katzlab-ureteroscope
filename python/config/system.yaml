@@ -40,21 +40,6 @@ input:
   axis_deadzone:
     flexion: 0.015
 
-  # The right stick is ONE stick, not two axes.
-  #
-  # Shaping each half separately gives a square dead region -- and with unequal
-  # per-axis deadzones, unequal sides -- so a diagonal push crosses one
-  # threshold before the other and does not travel in the direction you pushed.
-  # Declared as a pair, the deadzone and curve apply to the vector's magnitude
-  # and the direction passes through untouched: a 45-degree push gives 45
-  # degrees, and the corner is not faster than the edge.
-  #
-  # The per-axis deadzone/expo above still apply to anything NOT listed here.
-  paired_axes:
-    - axes: [rotation, flexion]
-      deadzone: 0.03
-      expo: 0.3
-
 motion:
   # velocity = Motion_Velocity_Server.ino. The host sets a target SPEED per
   #            axis and the firmware ramps toward it, stepping continuously.

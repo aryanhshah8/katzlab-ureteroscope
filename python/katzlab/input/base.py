@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -115,33 +114,3 @@ def apply_deadzone_and_curve(value: float, deadzone: float, expo: float) -> floa
     rescaled = min(1.0, rescaled)
     shaped = (1.0 - expo) * rescaled + expo * (rescaled ** 3)
     return shaped if value > 0 else -shaped
-
-
-def apply_radial_deadzone_and_curve(
-    x: float, y: float, deadzone: float, expo: float
-) -> tuple[float, float]:
-    """Shape a two-axis stick as one vector, preserving its direction.
-
-    Applying a deadzone to each axis separately gives a SQUARE dead region, and
-    with different deadzones per axis the sides are unequal -- so a diagonal
-    push crosses one threshold before the other and the axis with the smaller
-    deadzone starts moving first. Push at 45 degrees and you do not get 45
-    degrees.
-
-    Here the deadzone and the response curve are applied to the vector's
-    MAGNITUDE, and the direction is carried through untouched. The dead region
-    becomes a circle, diagonals stay diagonal, and the magnitude is clamped to 1
-    so a corner push is not faster than a cardinal one -- which it otherwise is
-    by a factor of root two on pads with a square gate.
-    """
-    magnitude = math.hypot(x, y)
-    if magnitude <= deadzone:
-        return 0.0, 0.0
-
-    # Direction first, so nothing below can rotate the vector.
-    unit_x, unit_y = x / magnitude, y / magnitude
-
-    rescaled = min(1.0, (magnitude - deadzone) / (1.0 - deadzone))
-    shaped = (1.0 - expo) * rescaled + expo * (rescaled ** 3)
-
-    return unit_x * shaped, unit_y * shaped
