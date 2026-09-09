@@ -17,8 +17,8 @@ log = logging.getLogger(__name__)
 
 # Logical axis name -> the controller.yaml axis binding that drives it.
 #   left stick  X -> linear travel
-#   right stick X -> rotation
-#   right stick Y -> flexion
+#   right stick up/down    -> rotation
+#   right stick left/right -> flexion
 AXIS_ORDER = ("linear", "rotation", "flexion")
 
 

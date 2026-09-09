@@ -61,8 +61,8 @@ if the wizard is being awkward.
 | Input | Action |
 |---|---|
 | Left stick | linear travel |
-| Right stick X | rotation |
-| Right stick Y | flexion |
+| Right stick up/down | rotation |
+| Right stick left/right | flexion |
 | Left secondary (bumper) | Enable + Ready |
 | Left primary (trigger) | Standby |
 | Right secondary (bumper) | Fire |

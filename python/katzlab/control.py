@@ -2,9 +2,9 @@
 
 Button map, as specified for the rig::
 
-    left stick X          linear travel          (rate)
-    right stick X         rotation               (rate)
-    right stick Y         flexion                (rate, integrated to absolute)
+    left stick             linear travel          (rate)
+    right stick up/down    rotation               (rate)
+    right stick left/right flexion                (rate, integrated to absolute)
     left secondary  (LB)  Enable + Ready
     left primary    (LT)  Standby
     right secondary (RB)  Fire
