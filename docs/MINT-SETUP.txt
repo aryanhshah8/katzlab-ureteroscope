@@ -1,0 +1,299 @@
+================================================================================
+  KATZLAB URETEROSCOPE - LINUX MINT SETUP  (Mint 22.x / Ubuntu 24.04 base)
+================================================================================
+
+Repo: https://github.com/aryanhshah8/katzlab-ureteroscope   (private)
+
+Nothing in the code is Mint-specific -- it's plain Python + a Teensy over USB
+serial. Two things ARE Linux-specific and WILL stop you if skipped: udev
+permissions for the Teensy (steps 5-6), and re-calibrating the controller
+(step 8), because the shipped config/controller.yaml is pinned to a
+different machine's controller enumeration and the software refuses to run
+on a mismatched mapping rather than risk E-STOP landing on the wrong button.
+
+This covers the PYTHON CONTROL STACK only -- motion, laser, keyboard/gamepad
+input, firmware flashing. It does NOT cover ROS 2 / Isaac Sim / MATLAB; that
+is a separate, optional layer with its own script at ros2/setup-mint.sh and
+its own README in the same folder.
+
+
+--------------------------------------------------------------------------------
+1. PREREQUISITES (apt)
+--------------------------------------------------------------------------------
+
+  sudo apt update
+  sudo apt install -y git python3 python3-venv python3-pip curl
+
+  python3-venv is a SEPARATE package from python3 on Debian/Ubuntu -- without
+  it, `python3 -m venv` fails with "ensurepip is not available". Mint 22.x
+  ships Python 3.12 by default, which is plenty recent for this project.
+
+
+--------------------------------------------------------------------------------
+2. CLONE
+--------------------------------------------------------------------------------
+
+  git clone https://github.com/aryanhshah8/katzlab-ureteroscope.git
+  cd katzlab-ureteroscope
+
+  The repo is private -- sign in to GitHub when prompted (or set up an SSH
+  key / personal access token beforehand if this machine has no browser).
+
+
+--------------------------------------------------------------------------------
+3. PYTHON ENVIRONMENT
+--------------------------------------------------------------------------------
+
+  cd python
+  python3 -m venv .venv
+  ./.venv/bin/pip install --upgrade pip
+  ./.venv/bin/pip install -r requirements.txt
+
+  Every command below uses ./.venv/bin/python so you never have to remember
+  to `source .venv/bin/activate`.
+
+  If pygame fails to build from source (rare -- PyPI ships prebuilt wheels
+  with SDL2 bundled for almost every Linux setup, so this should just work):
+
+      sudo apt install -y python3-dev libsdl2-dev libsdl2-image-dev \
+          libsdl2-mixer-dev libsdl2-ttf-dev
+      ./.venv/bin/pip install -r requirements.txt
+
+
+--------------------------------------------------------------------------------
+4. ARDUINO-CLI + TEENSY PLATFORM
+--------------------------------------------------------------------------------
+
+  Official install script (installs to ~/.local/bin, no sudo needed):
+
+      curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \
+          | BINDIR=$HOME/.local/bin sh
+
+  Make sure ~/.local/bin is on PATH (add to ~/.bashrc if `arduino-cli
+  version` doesn't work in a fresh terminal):
+
+      export PATH="$HOME/.local/bin:$PATH"
+
+  Then the Teensy board platform and the laser servo library:
+
+      arduino-cli core update-index --additional-urls https://www.pjrc.com/teensy/package_teensy_index.json
+      arduino-cli core install teensy:avr --additional-urls https://www.pjrc.com/teensy/package_teensy_index.json
+      arduino-cli lib install SCServo
+
+  Without SCServo the firmware will not compile.
+
+
+--------------------------------------------------------------------------------
+5. SERIAL PORT PERMISSIONS (dialout group)
+--------------------------------------------------------------------------------
+
+  Lets your user open the Teensy's serial port (/dev/ttyACM0) without sudo --
+  this is what pyserial needs at runtime, separate from the udev rule below
+  which is about FLASHING.
+
+      sudo usermod -aG dialout $USER
+
+  Takes effect on your NEXT login. Either log out and back in, reboot, or in
+  the current terminal only:
+
+      newgrp dialout
+
+
+--------------------------------------------------------------------------------
+6. TEENSY UDEV RULES (needed to FLASH, separate from step 5)
+--------------------------------------------------------------------------------
+
+  The Teensy's bootloader (HalfKay) is raw USB HID, not a serial port, and
+  needs its own udev rule for a non-root user to upload firmware to it --
+  dialout group membership alone does not cover this. PJRC publishes the
+  official rule file:
+
+      curl -fsSL https://www.pjrc.com/teensy/49-teensy.rules \
+          | sudo tee /etc/udev/rules.d/49-teensy.rules
+      sudo udevadm control --reload-rules
+      sudo udevadm trigger
+
+  Unplug and replug the Teensy after this so it re-enumerates under the new
+  rule.
+
+
+--------------------------------------------------------------------------------
+7. CHECK THE TEENSY IS SEEN
+--------------------------------------------------------------------------------
+
+  Plug the Teensy's micro-USB into the machine, then:
+
+      ./.venv/bin/python -m katzlab ports
+
+  You want a /dev/ttyACM* line showing VID 16C0.
+
+  If it isn't there: unplug/replug, then check `dmesg | tail` for a USB
+  enumeration error, and double check step 5 actually took (`groups` should
+  list `dialout`).
+
+
+--------------------------------------------------------------------------------
+8. CALIBRATE THE CONTROLLER  -- MANDATORY, DO NOT SKIP
+--------------------------------------------------------------------------------
+
+  Plug the controller into the machine, then:
+
+      ./.venv/bin/python scripts/calibrate_controller.py
+
+  Follow the prompts:
+      Left stick        left then right
+      Right stick       UP then DOWN      (this is ROTATION)
+      Right stick       LEFT then RIGHT   (this is FLEXION)
+      Then buttons:     LB, LT, RB, RT, X, H
+
+  If a control does not register, watch every raw axis/button live:
+
+      ./.venv/bin/python scripts/gamepad_monitor.py
+
+  If pygame reports zero controllers here but the OS clearly sees the pad
+  (lsusb shows it), the joystick device node may need the same treatment as
+  the Teensy did -- some setups (especially over SSH with no logind seat)
+  need explicit `input` group membership for /dev/input/js* access:
+
+      sudo usermod -aG input $USER      # then log out/in, same as step 5
+
+  A local graphical Mint session usually grants this automatically via udev
+  ACLs; it's mainly bare SSH/TTY sessions that need the explicit group.
+
+  NO CONTROLLER AT ALL? This project also supports keyboard control -- see
+  docs/KEYBOARD-CONTROL.md. It still needs config/controller.yaml to exist on
+  disk (even unused), so run the calibration wizard once regardless, or copy
+  a controller.yaml from another machine.
+
+
+--------------------------------------------------------------------------------
+9. FLASH THE FIRMWARE
+--------------------------------------------------------------------------------
+
+  *** SWITCH THE LASER RELAY SUPPLY OFF FIRST ***
+  Pin 8 is on the relay's NC terminal, so the upload window arms the laser.
+
+      ./.venv/bin/python -m katzlab bringup --yes
+
+  This flashes, verifies, asks the two physical safety questions (relay
+  supply off; carriage at mechanical home), then hands off into the control
+  loop. Answer them for real -- --yes only skips the on-screen confirmation
+  prompt, it does not skip the actual physical checks those questions are
+  asking about.
+
+  (Manual flash, if you'd rather: arduino-cli compile/upload against
+  ../firmware/Motion_Velocity_Server with --fqbn teensy:avr:teensy41.)
+
+
+--------------------------------------------------------------------------------
+10. EVERY RUN AFTER THE FIRST
+--------------------------------------------------------------------------------
+
+      ./.venv/bin/python -m katzlab bringup --skip-flash --yes
+
+  Controls (gamepad):
+      Left stick        linear travel
+      Right stick U/D   rotation
+      Right stick L/R   flexion
+      LB                Enable + Ready       LT   Standby
+      RB                Fire                 RT   Pause
+      X                 EMERGENCY STOP       H    Home (hold 0.6 s)
+
+  Or keyboard (docs/KEYBOARD-CONTROL.md for the full writeup):
+
+      ./.venv/bin/python -m katzlab --input-source keyboard bringup --skip-flash --yes
+
+      Up/Down rotation     Left/Right flexion     A/D linear
+      R ready   F fire (hold)   S standby   P pause   H home   X ESTOP
+
+
+--------------------------------------------------------------------------------
+LINUX-SPECIFIC DIFFERENCES FROM MACOS
+--------------------------------------------------------------------------------
+
+  Emergency stop from another terminal:  pkill -f katzlab
+                      (cutting the relay supply is still the REAL stop)
+
+  Port auto-detect wrong?  Set it explicitly in config/system.yaml:
+                      link:
+                        port: /dev/ttyACM0
+
+  Terminal left echo-less/broken after a hard kill during keyboard control?
+                      run:  reset
+
+  Everything else in config/system.yaml carries over unchanged -- the ready
+  edge timing, fire polarity, and all the motion tuning. Only
+  controller.yaml is specific to a machine's controller.
+
+
+--------------------------------------------------------------------------------
+REPO LAYOUT
+--------------------------------------------------------------------------------
+
+  README.md                        start here
+  docs/COMMANDS.md                 every command, what it does
+  docs/KEYBOARD-CONTROL.md         keyboard control layout and limitations
+  firmware/
+    Motion_Velocity_Server/        <- flash this            (generated)
+    Combined_Motion_Laser/         older build              (generated)
+    src/                           hand-maintained motion core
+    original/                      the original sketches, source of truth
+  python/
+    katzlab/                       the control system
+    config/                        system.yaml, controller.yaml
+    scripts/                       calibration, diagnostics, firmware builds
+    tests/                         101 tests
+    logs/                          session CSVs land here
+  ros2/                            optional ROS 2 / Isaac Sim / MATLAB layer
+
+  Firmware is GENERATED. Edit the originals, then regenerate:
+
+      ./.venv/bin/python scripts/build_velocity_firmware.py
+
+
+--------------------------------------------------------------------------------
+USEFUL COMMANDS
+--------------------------------------------------------------------------------
+
+  ./.venv/bin/python -m katzlab bringup --skip-flash --yes
+  ./.venv/bin/python -m katzlab bringup --skip-flash --yes --no-laser
+  ./.venv/bin/python -m katzlab bringup --skip-flash --yes --no-record
+  ./.venv/bin/python -m katzlab bringup --skip-flash --yes --no-status
+  ./.venv/bin/python -m katzlab bringup --yes                  (reflash)
+  ./.venv/bin/python -m katzlab --input-source keyboard bringup --skip-flash --yes
+  ./.venv/bin/python -m katzlab monitor                        (raw serial)
+  ./.venv/bin/python -m katzlab diagnose-laser                 (never fires)
+  ./.venv/bin/python -m katzlab find-polarity                  (never fires)
+  ./.venv/bin/python -m katzlab bench                          (measures mm/s)
+  ./.venv/bin/python -m pytest tests/ -q                       (101 tests)
+
+  Full description of every command: docs/COMMANDS.md
+
+
+--------------------------------------------------------------------------------
+SAFETY
+--------------------------------------------------------------------------------
+
+  READY_ON_NC is true, meaning pin 8 sits on the relay's NC terminal. The ready
+  contact is CLOSED -- the laser ARMED -- whenever the coil is de-energised. A
+  reset, replug, firmware upload, loose jumper or loss of relay supply will arm
+  the laser with nobody commanding it.
+
+    -> De-energise the relay supply before flashing.
+    -> Do not leave the rig energised unattended.
+
+  The proper fix is hardware: move the pin 8 wire from the relay's NC terminal
+  to its NO terminal, then set READY_ON_NC = false in
+  firmware/original/shootingyesready_inoF-1/shootingyesready_inoF-1.ino
+  and regenerate the firmware:
+
+      ./.venv/bin/python scripts/build_velocity_firmware.py
+
+  That makes de-energised mean standby, so power loss becomes fail safe.
+
+  Standby is a SOFTWARE disarm on this rig -- it parks the fire channels and
+  locks the software but does not open the ready contact, because on this
+  wiring doing so ARMS the machine. The real disarm is the Dornier's own
+  standby or cutting the relay supply.
+
+================================================================================

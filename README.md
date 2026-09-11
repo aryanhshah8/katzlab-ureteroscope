@@ -17,7 +17,8 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/python -m katzlab bringup --yes            # flash, verify, run
 ```
 
-Windows: **[docs/WINDOWS-SETUP.txt](docs/WINDOWS-SETUP.txt)**
+Windows: **[docs/WINDOWS-SETUP.txt](docs/WINDOWS-SETUP.txt)**  
+Linux Mint: **[docs/MINT-SETUP.txt](docs/MINT-SETUP.txt)**
 
 ## Controls
 
@@ -81,3 +82,6 @@ Full detail and the hardware fix: **[docs/LASER.md](docs/LASER.md)**
 - **[docs/LASER.md](docs/LASER.md)** -- arming sequence and troubleshooting
 - **[docs/PYTHON.md](docs/PYTHON.md)** -- architecture and configuration
 - **[docs/WINDOWS-SETUP.txt](docs/WINDOWS-SETUP.txt)** -- Windows setup, in order
+- **[docs/MINT-SETUP.txt](docs/MINT-SETUP.txt)** -- Linux Mint setup, in order
+- **[docs/COMMANDS.md](docs/COMMANDS.md)** -- every command and script, what it does
+- **[docs/KEYBOARD-CONTROL.md](docs/KEYBOARD-CONTROL.md)** -- keyboard control layout
