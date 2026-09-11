@@ -157,6 +157,17 @@ instead of stopping at the first one that works.
 
 Not `katzlab` subcommands -- run directly with the venv's Python.
 
+### `keyboard_control.py`
+
+```
+python scripts/keyboard_control.py [extra bringup flags]
+```
+
+One command for keyboard-driven control -- equivalent to
+`katzlab --input-source keyboard bringup --skip-flash --yes`, with any extra
+arguments forwarded straight through to `bringup`. See
+`docs/KEYBOARD-CONTROL.md` for the key layout.
+
 ### `calibrate_controller.py`
 
 ```

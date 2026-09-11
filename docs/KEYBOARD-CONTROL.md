@@ -5,7 +5,21 @@ firmware protocol underneath -- only where the input comes from changes.
 
 ## Enabling it
 
-Either edit `config/system.yaml`:
+**Shortcut -- one command, nothing to remember:**
+
+```bash
+python scripts/keyboard_control.py
+```
+
+Equivalent to `katzlab --input-source keyboard bringup --skip-flash --yes`,
+and it forwards any extra flags straight through (`--no-laser`,
+`--debug-buttons`, `--no-record`, etc). `--skip-flash` is baked in, since this
+is meant for every-day use once the firmware is already flashed -- for the
+actual first flash, or after changing firmware, use the full command below so
+the upload step runs.
+
+The long way, or if you want to change the default input source rather than
+override it per-run: either edit `config/system.yaml`:
 
 ```yaml
 input:
