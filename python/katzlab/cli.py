@@ -948,6 +948,11 @@ def build_parser() -> argparse.ArgumentParser:
         prog="katzlab", description="Python control for the KatzLab ureteroscope rig"
     )
     parser.add_argument("--config", help="path to system.yaml")
+    parser.add_argument(
+        "--input-source",
+        choices=("mac_gamepad", "teensy_host", "keyboard"),
+        help="override input.source for this run, e.g. --input-source keyboard",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("ports", help="list serial ports")
@@ -1044,6 +1049,14 @@ def main(argv: list[str] | None = None) -> int:
             laser=dataclasses.replace(cfg.laser, ready_edge_open_s=args.ready_open),
         )
         print(f"ready_edge_open_s overridden to {args.ready_open:.2f}s for this run")
+
+    if getattr(args, "input_source", None) is not None:
+        import dataclasses
+
+        cfg = dataclasses.replace(
+            cfg, input=dataclasses.replace(cfg.input, source=args.input_source)
+        )
+        print(f"input.source overridden to {args.input_source!r} for this run")
 
     setup_logging(cfg.logging.level, cfg.logging.session_log_dir)
 

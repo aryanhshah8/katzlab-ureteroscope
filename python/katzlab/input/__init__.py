@@ -21,4 +21,8 @@ def create_input_source(source: str, *args, **kwargs) -> InputSource:
         from .teensy_host import TeensyHostSource
 
         return TeensyHostSource(*args, **kwargs)
+    if source == "keyboard":
+        from .keyboard import KeyboardInputSource
+
+        return KeyboardInputSource(*args, **kwargs)
     raise InputUnavailable(f"unknown input source {source!r}")

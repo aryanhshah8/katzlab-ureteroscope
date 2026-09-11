@@ -61,9 +61,10 @@ class InputConfig:
     axis_deadzone: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.source not in ("mac_gamepad", "teensy_host"):
+        if self.source not in ("mac_gamepad", "teensy_host", "keyboard"):
             raise ConfigError(
-                f"input.source must be 'mac_gamepad' or 'teensy_host', got {self.source!r}"
+                "input.source must be 'mac_gamepad', 'teensy_host' or "
+                f"'keyboard', got {self.source!r}"
             )
         if not 0.0 <= self.deadzone < 1.0:
             raise ConfigError("input.deadzone must be in [0, 1)")
