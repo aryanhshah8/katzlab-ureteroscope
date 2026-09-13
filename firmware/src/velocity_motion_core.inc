@@ -85,8 +85,10 @@ const int servo_ID = 1;
 // sets the servo speed to match, so the servo travels continuously instead of
 // arriving early and waiting.
 const int servo_acceleration = 60;
-const int flexionMinServoSpeed = 6;
-const int flexionMaxServoSpeed = 2200;
+// Pinned to a flat 53 steps/s for now (the speed needed at the usual 8
+// tip-deg/s jog rate) instead of matching the live target rate.
+const int flexionMinServoSpeed = 53;
+const int flexionMaxServoSpeed = 53;
 
 // Command the servo a little AHEAD of the target so it always has somewhere to
 // travel to. Without this it converges on the current target and stops between
