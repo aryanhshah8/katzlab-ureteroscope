@@ -14,3 +14,7 @@ build/
 
 # macOS
 .DS_Store
+
+# colcon build output
+ros2/install/
+ros2/log/

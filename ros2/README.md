@@ -96,30 +96,71 @@ It is the first thing to check when two things that should be talking are not.
 
 ## 5. The bridge node
 
-Still to write: a node wrapping the existing `katzlab` package, which already
-owns the serial protocol, calibration and safety interlocks. It is a wrapper,
-not a rewrite.
+Written: `ros2/katzlab_bridge/`, an `ament_python` package. It wraps the
+existing `katzlab` package (serial protocol, calibration, safety interlocks)
+by plugging into the one seam the control loop already has for this --
+`InputSource` -- the same interface the gamepad and keyboard backends
+implement. `katzlab` itself is untouched; the bridge imports it straight off
+`python/` at runtime (see the `sys.path` note at the top of `bridge_node.py`)
+rather than vendoring or reimplementing it.
 
-Planned interface:
-
-| direction | topic | type |
+| direction | topic/service | type |
 |---|---|---|
 | publish | `/ureteroscope/joint_states` | `sensor_msgs/JointState` |
-| publish | `/ureteroscope/laser_state` | custom or `std_msgs` |
-| subscribe | `/ureteroscope/cmd_velocity` | per-axis velocity targets |
-| service | `/ureteroscope/home`, `/ureteroscope/estop` | `std_srvs/Trigger` |
+| publish | `/ureteroscope/laser_state` | `diagnostic_msgs/DiagnosticStatus` |
+| subscribe | `/ureteroscope/cmd_velocity` | `geometry_msgs/Twist` (see below) |
+| service | `/ureteroscope/home` | `std_srvs/Trigger` |
+| service | `/ureteroscope/estop` | `std_srvs/Trigger` |
 
 Joints: `linear` (prismatic, metres), `rotation` (revolute, radians),
 `flexion` (revolute, radians). Note ROS uses **SI** -- the existing code is in
 mm and degrees, so the node converts at the boundary rather than changing the
 tuning that has already been dialled in on hardware.
 
+`cmd_velocity` repurposes `Twist`'s fields rather than standing up a whole
+interface package for three floats this early: `linear.x` = linear velocity
+(m/s), `angular.z` = rotation velocity (rad/s), `angular.y` = flexion
+velocity (rad/s). If this grows real consumers, swap in a dedicated message.
+
 The CSV recorder added earlier already captures exactly these fields, so the
 data model is settled.
+
+### Building and running
+
+```bash
+cd ros2
+colcon build --packages-select katzlab_bridge
+source install/setup.bash
+
+# with hardware attached (real Teensy, per docs/MINT-SETUP.txt):
+ros2 launch katzlab_bridge bridge.launch.py
+
+# no Teensy attached -- exercises the ROS wiring only, not the real motion
+# protocol (see the dry_run note in bridge_node.py):
+ros2 launch katzlab_bridge bridge.launch.py dry_run:=true
+```
+
+Then, from another sourced terminal:
+
+```bash
+ros2 topic echo /ureteroscope/joint_states
+ros2 topic echo /ureteroscope/laser_state
+ros2 topic pub /ureteroscope/cmd_velocity geometry_msgs/msg/Twist \
+  "{linear: {x: 0.001}, angular: {z: 0.1, y: 0.0}}"
+ros2 service call /ureteroscope/home std_srvs/srv/Trigger
+ros2 service call /ureteroscope/estop std_srvs/srv/Trigger
+```
+
+`config_path:=/abs/path/to/system.yaml` is also a launch argument, if the rig
+isn't using the repo's default `python/config/system.yaml`.
 
 ### Safety, unchanged
 
 The laser interlocks stay in firmware and in `katzlab`. **Nothing about the
-laser should ever be commandable from a ROS topic** -- a topic is
-remote-triggerable by anything on the graph, including a simulator. Motion
-over ROS, laser only from the physical controller.
+laser is commandable from ROS** -- a topic is remote-triggerable by anything
+on the graph, including a simulator. `/ureteroscope/estop` is the one
+exception worth naming explicitly: it can only ever make things *safer*
+(same as the physical E-stop), it cannot arm or fire anything, and there is
+deliberately no ROS-side way to clear it -- clearing an e-stop stays a
+physical, at-the-rig action. Motion over ROS, laser only from the physical
+controller.
