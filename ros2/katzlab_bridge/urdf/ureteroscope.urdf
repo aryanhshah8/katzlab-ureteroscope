@@ -1,0 +1,114 @@
+<?xml version="1.0"?>
+<!--
+  Placeholder kinematic model of the rig — three joints, box/cylinder
+  geometry, no real CAD. Good enough to see the three axes move together in
+  RViz/Isaac Sim and to sanity-check /ureteroscope/joint_states; not a
+  dimensionally accurate model of the hardware. Swap in real meshes under
+  each visual/collision when they exist, the joint tree and limits below
+  are what actually needs to stay in sync with python/config/system.yaml.
+
+  Joint to config.motion mapping (mm/deg -> m/rad, done in bridge_node.py):
+    linear_joint    prismatic   motion.linear.min_mm/max_mm     (0 .. 0.177 m)
+    rotation_joint  continuous  no configured limit (scope rotation is
+                                 unbounded — the 2.5:1 reduction is already
+                                 folded into rotation_map_deg upstream)
+    flexion_joint   revolute    motion.flexion.min_deg/max_deg  (+-270 deg)
+
+  flexion's +-270 deg range is the software/firmware ceiling from
+  system.yaml, not a claim that a real hinge bends that far — it exists so
+  RViz/Isaac Sim never clip a value the real stack would otherwise accept.
+-->
+<robot name="ureteroscope">
+
+  <material name="chassis_grey">
+    <color rgba="0.55 0.55 0.58 1.0"/>
+  </material>
+  <material name="carriage_blue">
+    <color rgba="0.20 0.45 0.75 1.0"/>
+  </material>
+  <material name="scope_white">
+    <color rgba="0.92 0.92 0.90 1.0"/>
+  </material>
+  <material name="tip_red">
+    <color rgba="0.75 0.15 0.15 1.0"/>
+  </material>
+
+  <!-- Fixed to the world / mounting stand. -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0.10 0 0.02" rpy="0 0 0"/>
+      <geometry><box size="0.30 0.10 0.04"/></geometry>
+      <material name="chassis_grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0.10 0 0.02" rpy="0 0 0"/>
+      <geometry><box size="0.30 0.10 0.04"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Linear stage: the carriage travels along +X, 0 = mechanical home. -->
+  <joint name="linear_joint" type="prismatic">
+    <parent link="base_link"/>
+    <child link="linear_link"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0.0" upper="0.177" effort="10.0" velocity="0.0025"/>
+  </joint>
+
+  <link name="linear_link">
+    <visual>
+      <origin xyz="0.03 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.06 0.06 0.03"/></geometry>
+      <material name="carriage_blue"/>
+    </visual>
+    <collision>
+      <origin xyz="0.03 0 0" rpy="0 0 0"/>
+      <geometry><box size="0.06 0.06 0.03"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Scope rotation about the insertion axis. Reported value is already
+       past the 2.5:1 gear reduction, so this joint's angle is the scope's
+       own angle, not the motor's. -->
+  <joint name="rotation_joint" type="continuous">
+    <parent link="linear_link"/>
+    <child link="rotation_link"/>
+    <origin xyz="0.06 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit effort="5.0" velocity="0.349"/>  <!-- 20 deg/s in rad/s -->
+  </joint>
+
+  <link name="rotation_link">
+    <visual>
+      <origin xyz="0.20 0 0" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.006" length="0.40"/></geometry>
+      <material name="scope_white"/>
+    </visual>
+    <collision>
+      <origin xyz="0.20 0 0" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.006" length="0.40"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Tip flexion, the one joint that moves inside the patient. -->
+  <joint name="flexion_joint" type="revolute">
+    <parent link="rotation_link"/>
+    <child link="flexion_link"/>
+    <origin xyz="0.40 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-4.7124" upper="4.7124" effort="1.0" velocity="0.1396"/>  <!-- +-270 deg, 8 deg/s -->
+  </joint>
+
+  <link name="flexion_link">
+    <visual>
+      <origin xyz="0.02 0 0" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.005" length="0.04"/></geometry>
+      <material name="tip_red"/>
+    </visual>
+    <collision>
+      <origin xyz="0.02 0 0" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.005" length="0.04"/></geometry>
+    </collision>
+  </link>
+
+</robot>

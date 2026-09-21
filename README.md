@@ -46,6 +46,7 @@ python/
   scripts/                  calibration, diagnostics, firmware generation
   tests/                    80 tests against firmware simulators
 docs/
+ros2/                       optional layer: ROS 2 bridge, RViz, Isaac Sim
 ```
 
 **Firmware is generated, never hand-edited.** Edit the originals, then:
@@ -85,3 +86,4 @@ Full detail and the hardware fix: **[docs/LASER.md](docs/LASER.md)**
 - **[docs/MINT-SETUP.txt](docs/MINT-SETUP.txt)** -- Linux Mint setup, in order
 - **[docs/COMMANDS.md](docs/COMMANDS.md)** -- every command and script, what it does
 - **[docs/KEYBOARD-CONTROL.md](docs/KEYBOARD-CONTROL.md)** -- keyboard control layout
+- **[ros2/README.md](ros2/README.md)** -- optional: ROS 2 bridge, RViz, Isaac Sim digital twin

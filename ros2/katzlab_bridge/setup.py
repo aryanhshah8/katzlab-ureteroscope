@@ -9,7 +9,16 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/bridge.launch.py"]),
+        (
+            f"share/{package_name}/launch",
+            [
+                "launch/bridge.launch.py",
+                "launch/view.launch.py",
+                "launch/sim.launch.py",
+            ],
+        ),
+        (f"share/{package_name}/urdf", ["urdf/ureteroscope.urdf"]),
+        (f"share/{package_name}/rviz", ["rviz/ureteroscope.rviz"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

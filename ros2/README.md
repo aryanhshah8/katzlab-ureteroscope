@@ -154,6 +154,26 @@ ros2 service call /ureteroscope/estop std_srvs/srv/Trigger
 `config_path:=/abs/path/to/system.yaml` is also a launch argument, if the rig
 isn't using the repo's default `python/config/system.yaml`.
 
+### RViz
+
+`ros2/katzlab_bridge/urdf/ureteroscope.urdf` -- three joints (linear
+prismatic, rotation continuous, flexion revolute), placeholder box/cylinder
+geometry, limits pulled from `system.yaml`. Same file feeds both RViz and
+Isaac Sim, so there is one kinematic model, not two to keep in sync.
+
+```bash
+ros2 launch katzlab_bridge view.launch.py                    # RViz alone
+ros2 launch katzlab_bridge sim.launch.py dry_run:=true       # bridge + RViz together
+```
+
+### Isaac Sim: the digital twin, written
+
+`ros2/isaac/load_rig.py` imports the same URDF into Isaac Sim and mirrors
+`/ureteroscope/joint_states` onto it -- rig-to-sim only, never the reverse.
+Full detail, and an important caveat (**it has not been run against a real
+Isaac Sim install** -- there was none available while writing it, only
+NVIDIA's documented API): **[ros2/isaac/README.md](isaac/README.md)**.
+
 ### Safety, unchanged
 
 The laser interlocks stay in firmware and in `katzlab`. **Nothing about the
