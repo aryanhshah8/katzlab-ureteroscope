@@ -80,6 +80,12 @@ MATLAB ships its own DDS, so if it cannot see nodes that `ros2 topic list`
 shows, the cause is almost always a mismatched `ROS_DOMAIN_ID` rather than
 anything in MATLAB.
 
+`ros2/matlab/ureteroscope_demo.m` -- subscribes to `/ureteroscope/joint_states`
+and publishes a small `cmd_velocity` nudge, against the bridge node
+documented below. Like the Isaac Sim script, written against the documented
+ROS Toolbox API and not run against a real MATLAB install -- see the comment
+at its top.
+
 ---
 
 ## 4. Everything must share a domain ID
