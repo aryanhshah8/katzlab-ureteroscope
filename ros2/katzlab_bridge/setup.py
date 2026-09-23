@@ -15,6 +15,7 @@ setup(
                 "launch/bridge.launch.py",
                 "launch/view.launch.py",
                 "launch/sim.launch.py",
+                "launch/watch.launch.py",
             ],
         ),
         (f"share/{package_name}/urdf", ["urdf/ureteroscope.urdf"]),

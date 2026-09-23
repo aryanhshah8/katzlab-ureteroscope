@@ -107,10 +107,12 @@ sudo apt-get install -y \
   "ros-${ROS_DISTRO_WANTED}-desktop" \
   ros-dev-tools \
   "ros-${ROS_DISTRO_WANTED}-vision-msgs" \
+  "ros-${ROS_DISTRO_WANTED}-foxglove-bridge" \
   python3-colcon-common-extensions \
   python3-rosdep \
   python3-serial
 ok "ROS 2 ${ROS_DISTRO_WANTED} desktop installed (RViz2 included)"
+ok "foxglove-bridge installed -- lets a Mac (or anything) watch the graph without installing ROS 2, see ros2/README.md section 6"
 
 # ---------------------------------------------------------------------------
 step "6. rosdep"

@@ -180,6 +180,44 @@ Full detail, and an important caveat (**it has not been run against a real
 Isaac Sim install** -- there was none available while writing it, only
 NVIDIA's documented API): **[ros2/isaac/README.md](isaac/README.md)**.
 
+### 6. Checking everything from a Mac, with no ROS 2 install there
+
+ROS 2's own tooling (`ros2 topic list`, RViz, etc.) needs ROS 2 actually
+installed to join the DDS network -- on macOS that means building from
+source, which is real friction just to *look* at the graph. **Foxglove
+Studio** sidesteps that: it's a normal Mac app, and it talks to the graph
+over a plain WebSocket instead of DDS, via one small bridge node running on
+the Mint machine.
+
+**On Mint** (the bridge node is included in `setup-mint.sh`):
+
+```bash
+ros2 launch katzlab_bridge watch.launch.py dry_run:=true
+# or, without dry_run, hardware attached; or add config_path:=... as usual
+```
+
+That starts `katzlab_bridge` *and* `foxglove_bridge` together, listening on
+port 8765.
+
+**On the Mac:**
+
+1. Install Foxglove Studio (search "Foxglove" -- it's a free macOS app,
+   no ROS 2 or any other dependency needed).
+2. "Open connection" -> **Foxglove WebSocket** -> `ws://<mint-hostname-or-ip>:8765`
+   (both machines need to be reachable from each other -- same LAN/Tailscale/
+   whatever; `hostname -I` on Mint gives you the IP).
+3. You should immediately see: every topic (`/ureteroscope/joint_states`,
+   `/ureteroscope/laser_state`), live values updating, and a Raw Messages
+   panel per topic to confirm data is actually flowing, not just that the
+   topic exists.
+4. Foxglove also has a 3D panel that reads URDF + TF, same idea as RViz --
+   point it at `urdf/ureteroscope.urdf` for a live 3D view without RViz or
+   any ROS 2 install on the Mac at all.
+
+This is the fastest way to answer "is everything actually connected" from a
+second machine -- no build step, no domain ID juggling (the Mac never joins
+the ROS domain; it only ever talks to the one WebSocket port on Mint).
+
 ### Safety, unchanged
 
 The laser interlocks stay in firmware and in `katzlab`. **Nothing about the
