@@ -111,4 +111,28 @@
     </collision>
   </link>
 
+  <!-- PLACEHOLDER mount point for the endoscope camera, fixed at the very
+       tip of flexion_link looking forward along +X (the lumen direction).
+       The offset here (one flexion_link length past its parent joint, zero
+       lateral/vertical offset) is a guess, not a measurement — nobody has
+       given this script the real camera's mounting position relative to the
+       tip, or its optical specs. ros2/isaac/CAMERA-SPECS.md tracks exactly
+       what's needed to replace this guess with the real thing; nothing
+       downstream (generate_training_data.py) reads camera intrinsics from
+       here, it keeps its own placeholder constants, also flagged. This
+       link exists so the mount POSITION is visible in RViz/Isaac Sim and
+       documented in one place rather than buried in a script. -->
+  <joint name="camera_joint" type="fixed">
+    <parent link="flexion_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.04 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_link">
+    <visual>
+      <geometry><box size="0.002 0.002 0.002"/></geometry>
+      <material name="chassis_grey"/>
+    </visual>
+  </link>
+
 </robot>

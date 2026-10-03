@@ -176,9 +176,19 @@ ros2 launch katzlab_bridge sim.launch.py dry_run:=true       # bridge + RViz tog
 
 `ros2/isaac/load_rig.py` imports the same URDF into Isaac Sim and mirrors
 `/ureteroscope/joint_states` onto it -- rig-to-sim only, never the reverse.
-Full detail, and an important caveat (**it has not been run against a real
-Isaac Sim install** -- there was none available while writing it, only
-NVIDIA's documented API): **[ros2/isaac/README.md](isaac/README.md)**.
+
+The bigger goal this is building toward: `ros2/isaac/generate_training_data.py`
+uses that same digital twin to mass-generate labeled synthetic images (RGB +
+segmentation mask + depth + bounding box, auto-labeled) from the rig's own
+simulated camera, to train the CV stone-detection/navigation system at a
+scale hand-annotation can't match. The camera (`camera_link` in the URDF)
+and anatomy are currently placeholders -- `ros2/isaac/CAMERA-SPECS.md` is
+the exact punch list of real-world measurements needed to close the
+sim-to-real gap.
+
+Full detail on both scripts, and an important caveat (**neither has been run
+against a real Isaac Sim install** -- there was none available while writing
+them, only NVIDIA's documented API): **[ros2/isaac/README.md](isaac/README.md)**.
 
 ### 6. Checking everything from a Mac, with no ROS 2 install there
 

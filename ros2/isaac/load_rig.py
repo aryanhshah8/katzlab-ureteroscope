@@ -42,70 +42,37 @@ likeliest breakage points on a real machine, in order:
     AttributeError on a config field, check that extension's own example
     scripts (Isaac Sim ships them under
     extension_examples/interactive_scripts) for the current field names
-    and adjust CONFIG_OVERRIDES below rather than the rest of the script.
+    and adjust URDF_IMPORT_CONFIG_OVERRIDES in _isaac_common.py rather than
+    the rest of the script.
+
+The URDF import plumbing shared with generate_training_data.py lives in
+_isaac_common.py.
 """
 
 from __future__ import annotations
 
 import sys
 import threading
-from pathlib import Path
 
-URDF_PATH = Path(__file__).resolve().parent.parent / "katzlab_bridge" / "urdf" / "ureteroscope.urdf"
 JOINT_STATES_TOPIC = "/ureteroscope/joint_states"
 
-# Passed onto ImportConfig; see the module docstring if a field here no
-# longer exists on your Isaac Sim version.
-CONFIG_OVERRIDES = {
-    "fix_base": True,           # bolted to a stand, not free-floating
-    "merge_fixed_joints": False,
-    "convex_decomp": False,
-    "import_inertia_tensor": False,
-    "self_collision": False,
-    "default_drive_type": 1,    # position drive, so set_joint_positions holds
-    "default_drive_strength": 1.0e4,
-    "default_position_drive_damping": 1.0e3,
-}
-
 # ---------------------------------------------------------------------------
-# 1. Boot Isaac Sim. Must happen before any other isaacsim/omni import.
+# 1. Boot Isaac Sim. Must happen before any other isaacsim/omni import --
+#    including _isaac_common, which is why this import sits below the boot
+#    line rather than at the top of the file with everything else.
 # ---------------------------------------------------------------------------
 from isaacsim import SimulationApp  # noqa: E402
 
 simulation_app = SimulationApp({"headless": False})
 
-import omni.usd  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.prims import Articulation  # noqa: E402
-
-try:
-    from isaacsim.asset.importer.urdf import _urdf as urdf_importer
-except ImportError:
-    # Isaac Sim < 6.0 naming.
-    from omni.importer.urdf import _urdf as urdf_importer  # type: ignore[no-redef]
 
 import rclpy  # noqa: E402
 from rclpy.node import Node  # noqa: E402
 from sensor_msgs.msg import JointState  # noqa: E402
 
-
-def import_rig() -> str:
-    """Import the URDF and return the imported robot's stage prim path."""
-    if not URDF_PATH.exists():
-        raise FileNotFoundError(f"URDF not found at {URDF_PATH}")
-
-    importer = urdf_importer.acquire_urdf_interface()
-    import_config = urdf_importer.ImportConfig()
-    for field, value in CONFIG_OVERRIDES.items():
-        setattr(import_config, field, value)
-
-    result, prim_path = importer.parse_urdf(
-        str(URDF_PATH.parent), URDF_PATH.name, import_config
-    )
-    importer.import_robot(
-        str(URDF_PATH.parent), URDF_PATH.name, result, import_config, "/World/ureteroscope"
-    )
-    return "/World/ureteroscope"
+from _isaac_common import import_rig  # noqa: E402
 
 
 class JointMirrorNode(Node):
