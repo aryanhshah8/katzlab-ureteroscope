@@ -1,7 +1,8 @@
 # Isaac Sim: the digital twin
 
-Two scripts, two different jobs, sharing the same imported URDF
-(`_isaac_common.py` holds the URDF-import code both of them use):
+Three scripts, all sharing the same scene-building code so none of them can
+quietly drift apart from each other (`_isaac_common.py` -- URDF import, the
+camera mount, the placeholder anatomy, all the placeholder constants):
 
 - **`load_rig.py`** -- live mirror. Imports
   `../katzlab_bridge/urdf/ureteroscope.urdf` into Isaac Sim and mirrors
@@ -9,6 +10,13 @@ Two scripts, two different jobs, sharing the same imported URDF
   **rig -> sim**. It never publishes back onto the ROS graph. See the big
   comment at the top of the script for why, and for the deliberate path to
   add rig <- sim later if that's ever wanted.
+
+- **`preview_scene.py`** -- the setup step, read this before the next one.
+  Builds the exact scene `generate_training_data.py` renders from (rig,
+  camera, anatomy, a few stones) and just sits there with a window open so
+  you can look at it -- is the camera actually pointed down the lumen, is
+  the anatomy inside-out, are stones actually inside it -- before spending
+  GPU time capturing from a scene that turns out to be wrong.
 
 - **`generate_training_data.py`** -- synthetic dataset generator. The actual
   goal this is building toward: use the same digital twin to **mass-produce
@@ -41,6 +49,20 @@ A window opens with the ground plane and the imported rig. Move the linear
 axis (`ros2 topic pub /ureteroscope/cmd_velocity ...` -- see the example in
 `ros2/README.md`) and the carriage should slide in the Isaac Sim window
 within a step or two.
+
+## Setting up the scene before generating anything
+
+```bash
+~/isaacsim/python.sh ros2/isaac/preview_scene.py
+```
+
+A window opens with the rig, the placeholder anatomy, and a few stones. Walk
+through the four checks in the script's own docstring (camera pointed the
+right way at rest *and* through the flexion range, anatomy wall visible,
+stones actually inside the lumen) before moving on. This step exists
+because `generate_training_data.py` doesn't stop to show you anything -- it
+runs straight to a bulk headless capture, and the first sign of a wrong
+camera mount would otherwise be several thousand useless frames in.
 
 ## Generating a training dataset
 
