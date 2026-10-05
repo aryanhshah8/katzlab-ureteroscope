@@ -14,6 +14,12 @@ Bringing the rig into ROS 2 so it can talk to Isaac Sim, RViz and MATLAB.
 That is also the pairing NVIDIA recommends for the Isaac Sim ROS 2 bridge, so
 this is the supported path rather than a workaround.
 
+**One-shot setup**: `./ros2/bootstrap.sh` chains everything below (ROS 2,
+building `katzlab_bridge`, the sanity tests, Isaac Sim's training Python
+packages if Isaac Sim is found) into one command. Read on for what each
+step actually does, or just run it and see `../docs/MINT-ONLY-GUIDE.pdf`
+for the full walkthrough.
+
 ---
 
 ## 1. ROS 2 Jazzy
