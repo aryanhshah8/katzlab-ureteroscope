@@ -1,0 +1,267 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in,headheight=14pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{katzblue}{RGB}{30,80,140}
+
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{codeframe},
+  xleftmargin=10pt,
+  xrightmargin=10pt,
+  framesep=6pt,
+  columns=fullflexible,
+  keepspaces=true
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{KatzLab Ureteroscope --- Mint-Only Guide}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\textbf{\color{katzblue} KatzLab Ureteroscope}\\[4pt]
+Doing Everything on the Mint Box Alone}
+\author{No Mac, no second machine, no Foxglove --- one machine, start to finish}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\section*{Why this guide is different from the main runbook}
+\texttt{docs/RUNBOOK.pdf} assumes two machines: the Mint box running the
+rig and Isaac Sim, and a Mac watching it remotely over Foxglove. That
+split exists only because Isaac Sim cannot run on macOS at all --- it
+needs an NVIDIA GPU and Linux/Windows.
+
+If you are sitting at the Mint box itself, none of that split is needed.
+Everything --- the bridge, RViz, Isaac Sim, the real rig CAD, training ---
+runs and is viewed locally, on one machine, with no WebSocket bridge, no
+second app, and no network setup. This guide is that simpler path.
+
+\tableofcontents
+\newpage
+
+%============================================================
+\section{Install ROS 2}
+%============================================================
+
+\subsection{Check the Mint/Ubuntu base}
+The install script refuses to run on anything other than a Mint 22.x
+(Ubuntu 24.04 ``noble'') base, on purpose:
+
+\begin{lstlisting}
+cat /etc/upstream-release/lsb-release
+\end{lstlisting}
+
+You want \texttt{DISTRIB\_CODENAME=noble}. If it says something else,
+stop and ask before continuing.
+
+\subsection{Run the setup script}
+From the repository root:
+
+\begin{lstlisting}
+cd katzlab-ureteroscope
+./ros2/setup-mint.sh
+\end{lstlisting}
+
+Installs ROS 2 Jazzy Desktop (RViz2 included), \texttt{colcon}, and
+\texttt{foxglove-bridge} (unused in this guide, but harmless to have). A
+few GB, takes a while, safe to re-run if it fails partway.
+
+\subsection{Open a new terminal and verify}
+A terminal that was already open will not see the newly-installed ROS 2.
+Open a fresh one:
+
+\begin{lstlisting}
+ros2 --version
+which colcon
+rviz2 --help | head -1
+\end{lstlisting}
+
+All three should print something, not ``command not found.''
+
+%============================================================
+\section{Sanity-check what needs nothing else first}
+%============================================================
+
+These run right now, before ROS 2 or Isaac Sim are even touched. If
+either fails, fix it before going further --- nothing downstream will
+work:
+
+\begin{lstlisting}
+cd ros2/katzlab_bridge/test && python3 -m pytest -q
+cd ../../isaac/training && python3 -m pytest test_reach_math.py -q
+\end{lstlisting}
+
+Expected: \texttt{6 passed, 1 skipped} and \texttt{10 passed}.
+
+%============================================================
+\section{Build the ROS 2 package}
+%============================================================
+
+\begin{lstlisting}
+cd ros2
+colcon build --packages-select katzlab_bridge
+source install/setup.bash
+\end{lstlisting}
+
+Do this in every new terminal you open for the rest of this guide (or add
+it to \texttt{\textasciitilde/.bashrc} once you are confident it works).
+
+%============================================================
+\section{Bridge + RViz, all local}
+%============================================================
+
+One command starts the bridge node and RViz together, no Foxglove, no
+WebSocket, nothing but this one machine:
+
+\begin{lstlisting}
+ros2 launch katzlab_bridge sim.launch.py dry_run:=true
+\end{lstlisting}
+
+\texttt{dry\_run:=true} means no Teensy/hardware needed yet --- this
+exercises the ROS 2 wiring only. Drop the flag once hardware is attached.
+
+An RViz window opens directly on this machine's own screen, showing the
+placeholder stick-figure model. Leave this terminal running.
+
+\subsection{Send a test motion command}
+From a second terminal:
+
+\begin{lstlisting}
+source ~/katzlab-ureteroscope/ros2/install/setup.bash
+
+ros2 topic pub /ureteroscope/cmd_velocity geometry_msgs/msg/Twist \
+  "{linear: {x: 0.001}, angular: {z: 0.0, y: 0.0}}"
+\end{lstlisting}
+
+The model in RViz should move. Other useful checks from this same
+terminal:
+
+\begin{lstlisting}
+ros2 topic echo /ureteroscope/joint_states
+ros2 service call /ureteroscope/home std_srvs/srv/Trigger
+ros2 service call /ureteroscope/estop std_srvs/srv/Trigger
+\end{lstlisting}
+
+%============================================================
+\section{Isaac Sim: the real rig CAD}
+%============================================================
+
+This is the part that is genuinely local-only no matter what --- Isaac
+Sim cannot be watched remotely from a Mac at all, so being at this
+machine is the only way to see it, full stop.
+
+\subsection{Look at it before driving it}
+\begin{lstlisting}
+source /opt/ros/jazzy/setup.bash
+~/isaacsim/python.sh ~/katzlab-ureteroscope/ros2/isaac/preview_scene.py
+\end{lstlisting}
+
+A window opens with the real rig CAD (linear stage, rotation bearing, the
+actual Wolf RIWO ureteroscope mesh) and the real 8-stone benchtop target
+grid. Check:
+
+\begin{enumerate}
+  \item Does the scope's length look visually right relative to the
+        table/linear stage? (There is a known open question about this
+        --- see \texttt{ros2/isaac/assets/ASSET-NOTES.md}.)
+  \item Do the 7 flexible-tip segments bend as a plausible continuous
+        curve when driven through their range?
+  \item Do the 8 stone markers sit somewhere sensible near the tip?
+\end{enumerate}
+
+If something looks visually wrong here, stop and note exactly what, before
+trusting anything built on top of it.
+
+\subsection{Drive it live from the bridge}
+With Section~4's \texttt{sim.launch.py} still running in its own
+terminal:
+
+\begin{lstlisting}
+~/isaacsim/python.sh ~/katzlab-ureteroscope/ros2/isaac/load_rig.py
+\end{lstlisting}
+
+Re-send the test command from Section~4.1. Both the RViz window
+(placeholder model) and the Isaac Sim window (real CAD) should move
+together, within a step or two of each other.
+
+%============================================================
+\section{First training milestone: get the tip to the stone}
+%============================================================
+
+\subsection{Smoke-test}
+\begin{lstlisting}
+~/isaacsim/python.sh \
+  ~/katzlab-ureteroscope/ros2/isaac/training/reach_task.py
+\end{lstlisting}
+
+Random actions, no training --- confirms the environment runs end to end.
+
+\subsection{Install training dependencies}
+\begin{lstlisting}
+~/isaacsim/python.sh -m pip install gymnasium numpy stable-baselines3
+\end{lstlisting}
+
+\subsection{Train}
+\begin{lstlisting}
+~/isaacsim/python.sh \
+  ~/katzlab-ureteroscope/ros2/isaac/training/train_reach.py \
+  --total-timesteps 200000
+\end{lstlisting}
+
+State-based (tip/target \emph{positions}, not camera images) on purpose
+--- simpler problem first, and the prerequisite for a vision-based
+version later. Do not expect reliable stone-reaching from one run; watch
+for mean episode reward trending up and mean episode length trending down
+as the first sign anything is working.
+
+%============================================================
+\section{Everything running at once --- a reference layout}
+%============================================================
+
+Four terminals (or four panes in one terminal multiplexer), all on the
+Mint box:
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Terminal} & \textbf{Running} \\
+\hline
+1 & \texttt{ros2 launch katzlab\_bridge sim.launch.py dry\_run:=true} \\
+2 & \texttt{\textasciitilde/isaacsim/python.sh .../load\_rig.py} \\
+3 & free, for \texttt{ros2 topic pub} / \texttt{service call} commands \\
+4 & free, for training once 1--3 are confirmed working \\
+\hline
+\end{tabular}
+\end{center}
+
+No Mac, no Foxglove, no second machine, no network configuration --- one
+box, four terminals, everything visible on its own screen.
+
+%============================================================
+\section{What to report back if something breaks}
+%============================================================
+
+For each step: which numbered section, the exact command, and the full
+error output (not a paraphrase).
+
+Section~5 (Isaac Sim) is the one most likely to need a fix on first
+contact with a real install --- none of that code has been run against
+one yet. The two most likely failure points (the URDF importer
+extension's exact module path, and Replicator/RL API field names) are
+both named in \texttt{ros2/isaac/README.md}.
+
+\end{document}
