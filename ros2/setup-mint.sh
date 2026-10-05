@@ -81,8 +81,13 @@ ROS_APT_VERSION=$(curl -fsSL https://api.github.com/repos/ros-infrastructure/ros
 
 if [ -z "$ROS_APT_VERSION" ]; then
   warn "could not reach GitHub for the ros-apt-source version; falling back to the manual keyring"
-  sudo curl -fsSL -o /usr/share/keyrings/ros-archive-keyring.gpg \
-    https://raw.githubusercontent.com/ros/rosdistro/master/ros.key
+  # ros.key is ASCII-armored (a plain-text "-----BEGIN/END PGP PUBLIC KEY
+  # BLOCK-----" file). Saving that directly and pointing apt's signed-by at
+  # it breaks apt update with a cryptic "list of sources could not be read"
+  # -- apt/gpg need a dearmored (binary) keyring file here, not the raw key
+  # text. --dearmor converts it on the way in.
+  curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    | sudo gpg --dearmor --yes -o /usr/share/keyrings/ros-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
 http://packages.ros.org/ros2/ubuntu ${UBUNTU_CODENAME} main" \
     | sudo tee /etc/apt/sources.list.d/ros2.list >/dev/null
