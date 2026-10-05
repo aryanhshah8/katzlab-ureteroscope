@@ -206,8 +206,8 @@ ros2 launch katzlab_bridge watch.launch.py dry_run:=true
 # or, without dry_run, hardware attached; or add config_path:=... as usual
 ```
 
-That starts `katzlab_bridge` *and* `foxglove_bridge` together, listening on
-port 8765.
+That starts `katzlab_bridge`, `foxglove_bridge`, and `robot_state_publisher`
+together, listening on port 8765.
 
 **On the Mac:**
 
@@ -220,13 +220,25 @@ port 8765.
    `/ureteroscope/laser_state`), live values updating, and a Raw Messages
    panel per topic to confirm data is actually flowing, not just that the
    topic exists.
-4. Foxglove also has a 3D panel that reads URDF + TF, same idea as RViz --
-   point it at `urdf/ureteroscope.urdf` for a live 3D view without RViz or
-   any ROS 2 install on the Mac at all.
+4. Add a **3D panel** in Foxglove -- it reads the `/robot_description` and
+   `/tf` topics `watch.launch.py` already publishes and draws the rig
+   moving live, the same idea as RViz, no RViz or ROS 2 install on the Mac
+   needed at all.
 
 This is the fastest way to answer "is everything actually connected" from a
 second machine -- no build step, no domain ID juggling (the Mac never joins
 the ROS domain; it only ever talks to the one WebSocket port on Mint).
+
+**What this can and can't show you:** the 3D panel always draws the
+**placeholder** box/cylinder URDF (`katzlab_bridge/urdf/ureteroscope.urdf`)
+-- Foxglove reads URDF, and that placeholder is the only URDF that exists;
+the real rig CAD (`../isaac/assets/glidar_robot/`) is USD, Isaac-Sim-only,
+and was never published as a ROS topic. So this is genuinely live and
+genuinely Mac-only, but it's a stick-figure proxy, not the real mesh. To
+see the real CAD -- Isaac Sim's own render -- there is **no Mac-only
+path**: Isaac Sim cannot run on macOS at all (no NVIDIA GPU, Linux/Windows
+only), so that means either being at the Mint box's screen directly or
+remote-desktop/VNC into it.
 
 ### Safety, unchanged
 
