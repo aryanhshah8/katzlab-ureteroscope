@@ -1,0 +1,301 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in,headheight=14pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{katzblue}{RGB}{30,80,140}
+
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{codeframe},
+  xleftmargin=10pt,
+  xrightmargin=10pt,
+  framesep=6pt,
+  columns=fullflexible,
+  keepspaces=true
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{KatzLab Ureteroscope --- ROS2/Isaac Sim Runbook}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\textbf{\color{katzblue} KatzLab Ureteroscope}\\[4pt]
+ROS2 Bridge, Isaac Sim Digital Twin, and the Reach-Task Runbook}
+\author{Step-by-step setup and run guide}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\section*{How to use this document}
+This is a linear runbook: each section assumes the previous one actually
+worked. If a step fails, stop and fix it before moving to the next section
+--- later steps depend on earlier ones being genuinely up and running, not
+just ``probably fine.''
+
+Two machines are involved:
+\begin{itemize}
+  \item \textbf{Mint box} --- the machine physically wired to the rig
+        (Teensy, motors, laser), running ROS2 and Isaac Sim.
+  \item \textbf{Mac} --- your laptop, used only to \emph{watch} what the
+        Mint box is doing. Nothing on the Mac drives the rig.
+\end{itemize}
+
+\tableofcontents
+\newpage
+
+%============================================================
+\section{Install Foxglove Studio (on the Mac)}
+%============================================================
+
+Foxglove Studio lets you watch the live ROS2 graph (topics, values, a 3D
+view) from the Mac \textbf{without installing ROS2 there at all}. It talks
+to a small bridge running on the Mint box over a plain WebSocket.
+
+\begin{enumerate}
+  \item On the Mac, download and install \textbf{Foxglove Studio} (search
+        for it by name --- it is a free macOS app, no other dependency
+        needed).
+  \item Open it once to confirm it launches. You will come back to it in
+        Section~\ref{sec:watch}, after the Mint-side bridge is running.
+\end{enumerate}
+
+%============================================================
+\section{Install ROS2 (on the Mint box)}
+%============================================================
+
+\subsection{Check the Mint/Ubuntu base}
+The install script refuses to run on anything other than a Mint 22.x
+(Ubuntu 24.04 ``noble'') base, on purpose --- running the wrong ROS2
+distro against the wrong base fails in confusing ways otherwise. Confirm
+first:
+
+\begin{lstlisting}
+cat /etc/upstream-release/lsb-release
+\end{lstlisting}
+
+You want to see \texttt{DISTRIB\_CODENAME=noble}. If it says something
+else, stop and ask before continuing --- the script will bail out partway
+through otherwise.
+
+\subsection{Run the setup script}
+From the repository root on the Mint box:
+
+\begin{lstlisting}
+cd katzlab-ureteroscope
+./ros2/setup-mint.sh
+\end{lstlisting}
+
+This installs ROS2 Jazzy Desktop (includes RViz2), \texttt{colcon}, and
+\texttt{foxglove-bridge}. It is a few GB and will take a while. It is
+\textbf{safe to re-run} if it fails partway through.
+
+\subsection{Open a new terminal and verify}
+ROS2 is added to your shell's startup file by the script, so a terminal
+that was already open \textbf{will not} see it. Open a brand new terminal,
+then:
+
+\begin{lstlisting}
+ros2 --version
+which colcon
+\end{lstlisting}
+
+Both commands should print something, not ``command not found.'' If
+either fails, ROS2 did not install cleanly --- re-run
+\texttt{./ros2/setup-mint.sh} before continuing.
+
+%============================================================
+\section{Build and run the bridge (on the Mint box)}
+%============================================================
+
+\subsection{Sanity-check the parts that do not need ROS2 at all}
+These run anywhere Python runs, right now, before touching ROS2 or Isaac
+Sim. If either fails, fix it first --- nothing downstream will work:
+
+\begin{lstlisting}
+cd ros2/katzlab_bridge/test && python3 -m pytest -q
+cd ../../isaac/training && python3 -m pytest test_reach_math.py -q
+\end{lstlisting}
+
+Expected: \texttt{6 passed, 1 skipped} and \texttt{10 passed}.
+
+\subsection{Build the ROS2 package}
+\begin{lstlisting}
+cd ros2
+colcon build --packages-select katzlab_bridge
+source install/setup.bash
+\end{lstlisting}
+
+\subsection{Start the bridge, with Foxglove watching}
+This starts the \texttt{katzlab\_bridge} node \emph{and} the
+\texttt{foxglove\_bridge} WebSocket server together, so the Mac can watch
+everything from Section~\ref{sec:watch} onward:
+
+\begin{lstlisting}
+ros2 launch katzlab_bridge watch.launch.py dry_run:=true
+\end{lstlisting}
+
+\texttt{dry\_run:=true} means no Teensy/hardware needed for this step ---
+it exercises the ROS2 wiring only. Drop the flag once hardware is
+attached and you want the real thing.
+
+Leave this terminal running. Everything else happens in other terminals
+(or on the Mac).
+
+%============================================================
+\section{Watch it from the Mac}
+\label{sec:watch}
+%============================================================
+
+\begin{enumerate}
+  \item Find the Mint box's IP address (on Mint):
+\begin{lstlisting}
+hostname -I
+\end{lstlisting}
+  \item On the Mac, open Foxglove Studio $\rightarrow$ \textbf{Open
+        connection} $\rightarrow$ \textbf{Foxglove WebSocket}
+        $\rightarrow$ enter:
+\begin{lstlisting}
+ws://<mint-ip-address>:8765
+\end{lstlisting}
+  \item You should immediately see topics appear, including
+        \texttt{/ureteroscope/joint\_states} and
+        \texttt{/ureteroscope/laser\_state}. Open one and confirm values
+        are actually updating, not just that the topic exists.
+\end{enumerate}
+
+If nothing appears: confirm both machines are on the same
+network/reachable from each other, and that the \texttt{watch.launch.py}
+terminal on Mint is still running without errors.
+
+%============================================================
+\section{Try sending a motion command (on the Mint box)}
+%============================================================
+
+From a \emph{second} terminal on Mint (the first stays running the
+bridge):
+
+\begin{lstlisting}
+source ~/katzlab-ureteroscope/ros2/install/setup.bash
+
+ros2 topic pub /ureteroscope/cmd_velocity geometry_msgs/msg/Twist \
+  "{linear: {x: 0.001}, angular: {z: 0.0, y: 0.0}}"
+\end{lstlisting}
+
+You should see \texttt{/ureteroscope/joint\_states} values change, both
+in a terminal \texttt{ros2 topic echo} and in Foxglove on the Mac.
+
+Other useful checks from this second terminal:
+
+\begin{lstlisting}
+ros2 service call /ureteroscope/home std_srvs/srv/Trigger
+ros2 service call /ureteroscope/estop std_srvs/srv/Trigger
+\end{lstlisting}
+
+%============================================================
+\section{Isaac Sim: look at the real rig before anything else}
+%============================================================
+
+This step needs a GUI window, so it has to run directly on the Mint
+box's own screen (or via VNC/remote desktop into it) --- Foxglove cannot
+show you this part.
+
+\begin{lstlisting}
+source /opt/ros/jazzy/setup.bash
+~/isaacsim/python.sh ~/katzlab-ureteroscope/ros2/isaac/preview_scene.py
+\end{lstlisting}
+
+A window opens with the real rig CAD (linear stage, rotation bearing,
+the actual ureteroscope mesh) and the real 8-stone benchtop target grid.
+Check, before moving on to anything else:
+
+\begin{enumerate}
+  \item Does the scope's length look visually right relative to the
+        table/linear stage? (There is a known open question about this
+        --- see \texttt{ros2/isaac/assets/ASSET-NOTES.md} in the repo.)
+  \item Do the 7 flexible-tip segments bend plausibly as a continuous
+        curve when driven through their range, rather than kinking at
+        one joint?
+  \item Do the 8 stone markers sit somewhere sensible relative to where
+        the tip points?
+\end{enumerate}
+
+If something looks visually wrong, stop here and report back what you
+see before training anything against it.
+
+%============================================================
+\section{Isaac Sim: confirm the live mirror}
+%============================================================
+
+With the bridge from Section~4 still running:
+
+\begin{lstlisting}
+~/isaacsim/python.sh ~/katzlab-ureteroscope/ros2/isaac/load_rig.py
+\end{lstlisting}
+
+Re-send the test command from Section~5. The rig in the Isaac Sim window
+should move within a step or two of the real/dry-run joint states
+updating.
+
+%============================================================
+\section{First training milestone: get the tip to the stone}
+%============================================================
+
+\subsection{Smoke-test the environment}
+No training yet --- just confirms the simulated environment runs end to
+end with random actions:
+
+\begin{lstlisting}
+~/isaacsim/python.sh \
+  ~/katzlab-ureteroscope/ros2/isaac/training/reach_task.py
+\end{lstlisting}
+
+\subsection{Install the training dependencies}
+\begin{lstlisting}
+~/isaacsim/python.sh -m pip install gymnasium numpy stable-baselines3
+\end{lstlisting}
+
+\subsection{Train}
+\begin{lstlisting}
+~/isaacsim/python.sh \
+  ~/katzlab-ureteroscope/ros2/isaac/training/train_reach.py \
+  --total-timesteps 200000
+\end{lstlisting}
+
+This is state-based (tip and target \emph{positions}, not camera images)
+on purpose --- it is the simpler problem, and has to work before a
+vision-based version is worth attempting. Do not expect reliable
+stone-reaching from one run; watch for the mean episode reward trending
+up and the mean episode length trending down as the first sign that
+anything is working at all.
+
+%============================================================
+\section{What to report back if something breaks}
+%============================================================
+
+For each step above, the most useful thing to send back is:
+\begin{itemize}
+  \item Which numbered section/step you were on.
+  \item The \textbf{exact} command you ran.
+  \item The \textbf{full} error output, not a paraphrase.
+\end{itemize}
+
+Sections 7--9 (the Isaac Sim pieces) are the ones most likely to need a
+fix on first contact with a real Isaac Sim install --- none of that code
+has been run against one yet, and the two most likely failure points
+(the URDF importer extension's exact module path, and Replicator/RL API
+field names) are both named in \texttt{ros2/isaac/README.md}.
+
+\end{document}

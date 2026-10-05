@@ -87,3 +87,4 @@ Full detail and the hardware fix: **[docs/LASER.md](docs/LASER.md)**
 - **[docs/COMMANDS.md](docs/COMMANDS.md)** -- every command and script, what it does
 - **[docs/KEYBOARD-CONTROL.md](docs/KEYBOARD-CONTROL.md)** -- keyboard control layout
 - **[ros2/README.md](ros2/README.md)** -- optional: ROS 2 bridge, RViz, Isaac Sim digital twin
+- **[docs/RUNBOOK.pdf](docs/RUNBOOK.pdf)** -- step-by-step: Foxglove install, ROS 2 setup, the bridge, watching from a Mac, Isaac Sim, and the reach-task training run
