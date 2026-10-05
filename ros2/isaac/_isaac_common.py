@@ -1,21 +1,34 @@
 """Shared Isaac Sim plumbing for the katzlab scripts in this directory:
-URDF import, the camera mount, and the placeholder anatomy scene. One copy,
-used by ``load_rig.py``, ``preview_scene.py``, and
-``generate_training_data.py`` -- so the scene those three scripts agree on
-can't quietly drift apart between a one-off viewer, the thing you look at
-before committing to a dataset run, and the thing that actually produces
-the dataset.
+loading the real rig CAD, URDF import (placeholder fallback), the camera
+mount, and the placeholder anatomy scene. One copy, used by ``load_rig.py``,
+``preview_scene.py``, ``generate_training_data.py``, and
+``training/reach_task.py`` -- so none of them can quietly drift apart from
+what the others are driving.
 
 Import this ONLY after ``SimulationApp(...)`` has already been constructed in
 the entry script -- it imports ``isaacsim``/``omni`` submodules at module
-scope, which only work once the app is booted. See any of the three scripts
-above for the pattern.
+scope, which only work once the app is booted. See any of the scripts above
+for the pattern.
 
-UNVERIFIED, same caveat as everywhere else in ros2/isaac: written against
-NVIDIA's documented Isaac Sim 6.x API, not run against a real install. See
-the module docstring in load_rig.py for the two likeliest breakage points
-(importer module path, ImportConfig field names) -- they apply here too,
-since this is the same import code, just no longer duplicated across scripts.
+TWO WAYS TO GET THE RIG ONTO THE STAGE, in order of preference:
+
+  1. ``load_real_rig()`` -- references the actual CAD (assets/glidar_robot/),
+     real geometry and real joints, supplied directly rather than built in
+     this session. Verified to load correctly and to have an already-correct
+     cm->m / axis fix baked in by whoever built it -- checked with plain USD
+     (pxr) in this environment, not assumed. See assets/ASSET-NOTES.md for
+     exactly what was and wasn't checked, including one open question
+     (composed scope length looks short -- verify in the Isaac viewport).
+  2. ``import_rig()`` -- the placeholder box/cylinder URDF. Kept as a
+     fallback for machines without the (large, binary) real assets checked
+     out, and because RViz/robot_state_publisher on the ROS side still wants
+     a plain URDF either way.
+
+UNVERIFIED (Isaac Sim execution itself, as opposed to the real-rig USD data
+above): written against NVIDIA's documented Isaac Sim 6.x API, not run
+against a real install. See the module docstring in load_rig.py for the two
+likeliest breakage points on the placeholder-URDF path (importer module
+path, ImportConfig field names).
 """
 
 from __future__ import annotations
@@ -26,6 +39,57 @@ from pathlib import Path
 URDF_PATH = (
     Path(__file__).resolve().parent.parent / "katzlab_bridge" / "urdf" / "ureteroscope.urdf"
 )
+
+# ---------------------------------------------------------------------------
+# The real rig. See assets/ASSET-NOTES.md for provenance and what's verified.
+# ---------------------------------------------------------------------------
+REAL_ASSEMBLY_USD = Path(__file__).resolve().parent / "assets" / "glidar_robot" / (
+    "URDF-full-Assembly-ver5_2_no_action_graph.usd"
+)
+
+REAL_RIG_ROOT = "/World/ureteroscope/URDF_full_Assembly_ver5"
+REAL_JOINT_PATHS = {
+    "linear": REAL_RIG_ROOT + "/LA_Motor/LA_Slider_Prismatic",
+    "rotation": REAL_RIG_ROOT + "/Rotatng_bearng_outer/Rotatng_bearng_inner_rev",
+    # NOTE: these live under a SEPARATE sibling prim, "Endoscope_tip" --
+    # not nested inside Endoscope/uretroscope_flexible_CY the way the
+    # standalone scope file's own internal path (/Rhino/Geometry/Black/...)
+    # would suggest. Found by actually traversing the composed stage, not
+    # by assumption: Endoscope/uretroscope_flexible_CY is the payloaded
+    # full-detail visual scope; Endoscope_tip is a separate, directly-
+    # authored (non-payloaded) physics-rigged copy of just the flexible
+    # segment -- already correctly scaled/positioned in the assembly's own
+    # layer, so it needed none of the payload-loading fix load_real_rig()
+    # applies for the other one.
+    "flexion_segments": [
+        f"{REAL_RIG_ROOT}/Endoscope_tip/Black/mesh{i}/midJoint" for i in range(1, 8)
+    ],
+}
+REAL_TIP_PRIM_PATH = REAL_RIG_ROOT + "/Endoscope_tip/Black/mesh7"
+
+# Real limits -- CAD mechanical limits where measured (linear, rotation),
+# IROS 2026 paper Table I otherwise (flexion has none on the CAD's individual
+# segment joints; the real system enforces the aggregate limit in software,
+# which is what this number represents). See ASSET-NOTES.md for the CAD-vs-
+# paper discrepancy on rotation range (CAD is narrower) -- not resolved,
+# flagged there.
+REAL_LINEAR_RANGE_M = (-0.123, 0.123)
+REAL_ROTATION_RANGE_DEG = (-153.5526885986328, 153.5526885986328)
+REAL_FLEXION_RANGE_DEG = (-270.0, 270.0)
+
+# Max commanded rates, IROS 2026 paper Table I.
+REAL_LINEAR_MAX_RATE_M_S = 0.002
+REAL_ROTATION_MAX_RATE_DEG_S = 30.0
+REAL_FLEXION_MAX_RATE_DEG_S = 35.0
+
+# Real benchtop stone-target layout, same paper: 2x4 grid, submerged, 5cm
+# between rows, 6cm between adjacent columns, center-to-center. Centered on
+# the scope's approach direction for lack of a measured absolute origin --
+# only the relative spacing is from the paper, the overall placement isn't.
+STONE_GRID_ROWS = 2
+STONE_GRID_COLS = 4
+STONE_GRID_ROW_SPACING_M = 0.05
+STONE_GRID_COL_SPACING_M = 0.06
 
 # ---------------------------------------------------------------------------
 # PLACEHOLDER camera intrinsics -- see CAMERA-SPECS.md for the real-world
@@ -61,15 +125,21 @@ URDF_IMPORT_CONFIG_OVERRIDES = {
     "default_position_drive_damping": 1.0e3,
 }
 
-try:
-    from isaacsim.asset.importer.urdf import _urdf as urdf_importer
-except ImportError:
-    # Isaac Sim < 6.0 naming.
-    from omni.importer.urdf import _urdf as urdf_importer  # type: ignore[no-redef]
-
-
 def import_rig(dest_prim_path: str = "/World/ureteroscope") -> str:
-    """Import urdf/ureteroscope.urdf and return the imported prim path."""
+    """Import urdf/ureteroscope.urdf and return the imported prim path.
+
+    The urdf_importer extension import is deliberately lazy (inside this
+    function, not at module scope) so that everything else in this module
+    -- in particular the real-rig functions below, which only need plain
+    USD -- stays importable and testable outside Isaac Sim, where this
+    extension doesn't exist.
+    """
+    try:
+        from isaacsim.asset.importer.urdf import _urdf as urdf_importer
+    except ImportError:
+        # Isaac Sim < 6.0 naming.
+        from omni.importer.urdf import _urdf as urdf_importer  # type: ignore[no-redef]
+
     if not URDF_PATH.exists():
         raise FileNotFoundError(f"URDF not found at {URDF_PATH}")
 
@@ -83,6 +153,117 @@ def import_rig(dest_prim_path: str = "/World/ureteroscope") -> str:
         str(URDF_PATH.parent), URDF_PATH.name, result, import_config, dest_prim_path
     )
     return dest_prim_path
+
+
+# ---------------------------------------------------------------------------
+# The real rig
+# ---------------------------------------------------------------------------
+
+
+def real_rig_available() -> bool:
+    return REAL_ASSEMBLY_USD.exists()
+
+
+def load_real_rig(stage) -> str:
+    """Reference the real CAD assembly onto the stage at a fixed mount point
+    (/World/ureteroscope) -- fixed, not parameterized, because
+    REAL_JOINT_PATHS/REAL_TIP_PRIM_PATH are precomputed constants relative
+    to exactly that path; mounting it anywhere else would silently
+    desync them. Returns REAL_RIG_ROOT. See assets/ASSET-NOTES.md before
+    relying on this for anything beyond "does it load and are the joints
+    where expected" -- the composed-scale question there is still open.
+    """
+    if not real_rig_available():
+        raise FileNotFoundError(
+            f"real rig assets not found at {REAL_ASSEMBLY_USD} -- "
+            "fall back to import_rig() (the placeholder URDF) if these "
+            "weren't checked out, or see assets/ASSET-NOTES.md for where "
+            "they're supposed to come from"
+        )
+    from pxr import UsdGeom
+
+    prim = stage.DefinePrim("/World/ureteroscope", "Xform")
+    prim.GetReferences().AddReference(str(REAL_ASSEMBLY_USD))
+    UsdGeom.Xform(prim)
+    # A reference added after the stage already exists introduces new
+    # payload arcs (the ureteroscope sub-asset) that the stage's initial
+    # load rules -- computed before this reference existed -- don't cover.
+    # Without this, the scope's own geometry/joints silently fail to
+    # compose in: the Xform prim exists but has no children. Confirmed by
+    # actually hitting this (empty children) before adding the explicit
+    # Load() call, not assumed.
+    stage.Load()
+    return REAL_RIG_ROOT
+
+
+def set_real_linear_target(stage, position_m: float) -> None:
+    """Drive the real linear stage's prismatic joint to an absolute position
+    (meters, REAL_LINEAR_RANGE_M), by setting its USD physics drive target
+    directly -- the same attribute the asset's own authored defaults already
+    use (confirmed present when the asset was inspected), rather than going
+    through Isaac's Articulation wrapper, which needs the two separate
+    articulation roots in this asset (see ASSET-NOTES.md) handled correctly
+    and is a less direct, less obviously-correct path for a single joint."""
+    position_m = max(REAL_LINEAR_RANGE_M[0], min(REAL_LINEAR_RANGE_M[1], position_m))
+    joint = stage.GetPrimAtPath(REAL_JOINT_PATHS["linear"])
+    joint.GetAttribute("drive:linear:physics:targetPosition").Set(position_m)
+
+
+def set_real_rotation_target(stage, angle_deg: float) -> None:
+    """Drive the real rotation bearing's revolute joint (degrees)."""
+    angle_deg = max(REAL_ROTATION_RANGE_DEG[0], min(REAL_ROTATION_RANGE_DEG[1], angle_deg))
+    joint = stage.GetPrimAtPath(REAL_JOINT_PATHS["rotation"])
+    joint.GetAttribute("drive:angular:physics:targetPosition").Set(angle_deg)
+
+
+def set_real_flexion_target(stage, tip_angle_deg: float) -> None:
+    """Drive the real flexible tip's 7-segment continuum chain toward a
+    single aggregate tip angle (degrees, REAL_FLEXION_RANGE_DEG), by
+    distributing it evenly across the 7 unconstrained segment joints --
+    each gets tip_angle_deg / 7. This mirrors the same single-scalar
+    flexion abstraction katzlab's own Python control already uses
+    (flexion_target_deg); it is NOT a real continuum-mechanics solve, just
+    the simplest thing that makes "one commanded tip angle" produce a
+    plausible-looking bend across all 7 segments rather than concentrating
+    it at one joint. Good enough for the reach task's first milestone;
+    revisit if the resulting bend shape doesn't look right in the viewport.
+    """
+    tip_angle_deg = max(REAL_FLEXION_RANGE_DEG[0], min(REAL_FLEXION_RANGE_DEG[1], tip_angle_deg))
+    per_segment_deg = tip_angle_deg / len(REAL_JOINT_PATHS["flexion_segments"])
+    for joint_path in REAL_JOINT_PATHS["flexion_segments"]:
+        joint = stage.GetPrimAtPath(joint_path)
+        joint.GetAttribute("drive:angular:physics:targetPosition").Set(per_segment_deg)
+
+
+def get_real_tip_world_position(stage):
+    """World-space position of the scope's distal tip (mesh7), as the
+    bounding-box centroid -- NOT the prim's own transform, which reads
+    (0,0,0) for these meshes since Rhino-exported geometry bakes position
+    into vertex data rather than xformOps (confirmed when the asset was
+    inspected). Returns a Gf.Vec3d."""
+    from pxr import Usd, UsdGeom
+
+    prim = stage.GetPrimAtPath(REAL_TIP_PRIM_PATH)
+    bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render"])
+    return bbox_cache.ComputeWorldBound(prim).ComputeAlignedRange().GetMidpoint()
+
+
+def stone_grid_positions(origin_m=(0.0, 0.0, 0.0)):
+    """The real benchtop 2x4 stone grid from the IROS 2026 paper (rows along
+    Y, columns along Z, spaced per STONE_GRID_*_SPACING_M), offset from
+    origin_m. Only the spacing is from the paper -- origin_m is yours to
+    place relative to wherever the scope approaches from in your scene.
+    Returns a list of (x, y, z) tuples, STONE_GRID_ROWS * STONE_GRID_COLS
+    long.
+    """
+    ox, oy, oz = origin_m
+    positions = []
+    for row in range(STONE_GRID_ROWS):
+        for col in range(STONE_GRID_COLS):
+            y = oy + (row - (STONE_GRID_ROWS - 1) / 2.0) * STONE_GRID_ROW_SPACING_M
+            z = oz + (col - (STONE_GRID_COLS - 1) / 2.0) * STONE_GRID_COL_SPACING_M
+            positions.append((ox, y, z))
+    return positions
 
 
 def find_camera_mount_path(stage, rig_prim_path: str) -> str:

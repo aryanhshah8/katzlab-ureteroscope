@@ -18,3 +18,7 @@ build/
 # colcon build output
 ros2/install/
 ros2/log/
+
+# Isaac Sim generated output (datasets, trained policies) -- not source
+ros2/isaac/**/*.zip
+katzlab_sdg_output/
