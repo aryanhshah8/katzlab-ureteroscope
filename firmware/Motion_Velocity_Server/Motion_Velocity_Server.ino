@@ -1105,10 +1105,19 @@ void setupFlexion() {
   servo.pSerial = &Serial1;
   servoConnected = (servo.Ping(servo_ID) != -1);
   if (servoConnected) {
+    // EnableTorque alone, deliberately -- holds the servo wherever it
+    // physically is rather than letting it go limp, WITHOUT commanding it
+    // anywhere. This used to WritePosEx straight to flexionNeutralStep at a
+    // flat, un-ramped 400 steps/s on every boot -- meaning every power-up
+    // AND every reflash sent the tip flying toward neutral at full speed
+    // from wherever it actually was, with nobody's hand on the stick and no
+    // rate limiting at all. Confirmed on the bench as the cause of flexion
+    // snapping hard on reflash. The rig may now report a stale flexion
+    // position (software assumes 0 deg; the servo may physically be
+    // somewhere else) until the first real jog command or an explicit HOME
+    // brings it to a known position -- rate-limited, like everything else.
+    // A wrong number is a far safer failure than an uncommanded fast move.
     servo.EnableTorque(servo_ID, 1);
-    // One-off move to neutral at startup, so a fixed moderate speed is right
-    // here -- the rate matching below only applies to jogging.
-    servo.WritePosEx(servo_ID, flexionNeutralStep, 400, servo_acceleration);
   }
 }
 
