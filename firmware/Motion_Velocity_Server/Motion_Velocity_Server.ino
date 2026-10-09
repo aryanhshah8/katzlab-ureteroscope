@@ -952,6 +952,17 @@ const unsigned long flexionApplyInterval_ms = 20;
 const int flexionNeutralStep = 2048;
 const int servoMaximumStep = 4095;
 
+// MOUNTING CALIBRATION. The servo horn was installed such that its own raw
+// centre (step 2048, i.e. motor 0 deg) is NOT physically where the tip is
+// straight -- confirmed on the bench: commanding tip 0 deg currently drives
+// it fully curled, and true straight sits 180 deg away in the servo's own
+// frame. This shifts where "tip 0 deg" lands in the servo's physical travel
+// without touching any of the tip-degree math (ranges, gains, rates) above
+// it, which are all still correct relative to the TIP, not the servo horn.
+// If the horn is ever reseated, this is the one number to re-measure and
+// update -- do it by jogging to tip 0 deg and checking it reads straight.
+const float flexionServoOffsetDeg = 180.0f;
+
 const float flexionGearRatio = 3.5f;
 const float flexionTwistFactor0To90 = 6.0f;
 const float flexionTwistFactor90To180 = 6.5f;
@@ -1318,8 +1329,26 @@ void applyFlexionTarget() {
   commandTipDeg = clampf(commandTipDeg, flexionMinTipDeg, flexionMaxTipDeg);
 
   float motorDeg = commandTipDeg / gain;
-  if (motorDeg < -180.0f || motorDeg > 180.0f) return;
-  int steps = (int)lroundf(((motorDeg + 180.0f) * servoMaximumStep) / 360.0f);
+
+  // Shift into the servo's own physical frame (see flexionServoOffsetDeg).
+  // Deliberately NOT wrapped mod 360. The servo's encoder is a full circle,
+  // but the cable-driven tip mechanism is not -- it has a real mechanical
+  // limit somewhere around that circle that this code has no measurement
+  // of. The original +-180 bound was this firmware's whole safety margin
+  // against ever approaching that limit (step 0 / step 4095 are adjacent
+  // around the circle, and unknown territory). Wrapping the offset would
+  // walk the command through that same unmeasured territory on purpose --
+  // once near tip 0 deg with a 180 deg offset, every single time. Refusing
+  // out-of-range commands outright, the same as the original bound did, is
+  // the safe failure here: a tip range that comes back smaller than the
+  // nominal +-270 deg (because the offset ate into the margin on one side)
+  // needs a person to physically re-check the mechanism and widen it
+  // deliberately, not code assuming it's fine to wrap through unknown
+  // territory.
+  float servoFrameDeg = motorDeg + flexionServoOffsetDeg;
+  if (servoFrameDeg < -180.0f || servoFrameDeg > 180.0f) return;
+
+  int steps = (int)lroundf(((servoFrameDeg + 180.0f) * servoMaximumStep) / 360.0f);
 
   // Speed matched to the commanded tip rate, in servo steps per second.
   float motorDegPerSec = fabsf(flexionTargetVelocityDegPerSec) / gain;
