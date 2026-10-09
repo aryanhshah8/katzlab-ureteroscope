@@ -171,6 +171,20 @@ const float homeFlexionRateDegPerSec = 15.0f;
 const float homeFlexionToleranceDeg = 1.0f;
 unsigned long homeFlexionLastStep_ms = 0;
 
+// Hard ceiling on how long HOME will wait specifically on flexion's velocity
+// estimate to settle before it just declares that part done anyway. Without
+// this, a HOME that satisfies linear+rotation but whose flexion velocity
+// estimate never quite drops under the 0.5 deg/s threshold -- noise, a
+// servo that doesn't report a clean stop, anything -- could wait on that
+// condition forever, which silently blocks every subsequent flexion command
+// the operator sends (they'd all be overridden back toward 0 every tick for
+// as long as homing stays true). 3s is generous against the ~1-2s a 15
+// deg/s ramp needs even from the full 270 deg; if this ever actually gets
+// hit in practice, the 0.5 deg/s velocity threshold above is very likely too
+// tight and should be relaxed first, not this timeout raised.
+const unsigned long homeFlexionSettleTimeout_ms = 3000;
+unsigned long homeFlexionSettleDeadline_ms = 0;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -509,8 +523,13 @@ void updateHoming() {
   // Also require the lead controller's OWN velocity estimate to have
   // settled, not just the target value -- otherwise "home complete" can
   // still fire while the servo is mid-overshoot from an earlier spike.
+  // Bounded by homeFlexionSettleTimeout_ms (see its comment above) so this
+  // condition can never hang HOME indefinitely -- past the deadline, the
+  // target being back at 0 is treated as good enough on its own.
+  bool flexionSettled = fabsf(flexionTargetVelocityDegPerSec) < 0.5f
+    || millis() >= homeFlexionSettleDeadline_ms;
   bool flexionThere = fabsf(flexionTargetTipDeg) <= homeFlexionToleranceDeg
-    && fabsf(flexionTargetVelocityDegPerSec) < 0.5f;
+    && flexionSettled;
 
   if (linearThere && rotationThere && flexionThere) {
     homing = false;
@@ -618,6 +637,7 @@ void handleLine(char *line) {
       // compute a bogus dt (and therefore a bogus step size) against
       // whenever homing last ran, possibly a long time ago.
       homeFlexionLastStep_ms = 0;
+      homeFlexionSettleDeadline_ms = millis() + homeFlexionSettleTimeout_ms;
       Serial.println("HOMING");
       return;
 
