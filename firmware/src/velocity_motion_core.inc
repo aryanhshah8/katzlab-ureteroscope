@@ -163,6 +163,14 @@ const float homeApproachGain = 1.2f;
 const float homeLinearToleranceMM = 0.05f;
 const float homeRotationToleranceDeg = 0.5f;
 
+// Flexion's home approach is rate-limited, not snapped, on purpose -- see the
+// comment in updateHoming(). CONSERVATIVE on purpose: start here, verify the
+// actual tip motion on the bench at low speed before raising it. This is not
+// meant to be as fast as the joystick's own max rate.
+const float homeFlexionRateDegPerSec = 15.0f;
+const float homeFlexionToleranceDeg = 1.0f;
+unsigned long homeFlexionLastStep_ms = 0;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -477,9 +485,34 @@ void updateHoming() {
   bool linearThere = fabsf(linearError) <= homeLinearToleranceMM;
   bool rotationThere = fabsf(rotationError) <= homeRotationToleranceDeg;
 
-  flexionTargetTipDeg = 0.0f;
+  // Step the flexion target toward 0 at a bounded rate instead of snapping
+  // it there in one tick. applyFlexionTarget()'s lead controller estimates
+  // servo speed from how fast flexionTargetTipDeg is changing tick to tick;
+  // handing it an instant e.g. 166deg->0deg jump produces a fictitious
+  // multi-thousand-deg/s "velocity" that the lead math then amplifies into
+  // a hard slam toward the OPPOSITE travel limit before slowly settling
+  // back over the next several hundred ms -- this is what was actually
+  // happening on the bench ("tries to zero it, but doesn't stop"). Ramping
+  // the target here, the same way linear/rotation already approach 0 via a
+  // bounded target speed rather than a teleport, keeps the velocity
+  // estimate honest.
+  unsigned long nowMs = millis();
+  float flexionDt =
+    (homeFlexionLastStep_ms == 0) ? 0.0f : (float)(nowMs - homeFlexionLastStep_ms) / 1000.0f;
+  homeFlexionLastStep_ms = nowMs;
+  float flexionStep = homeFlexionRateDegPerSec * flexionDt;
+  if (flexionTargetTipDeg > 0.0f) {
+    flexionTargetTipDeg = fmaxf(0.0f, flexionTargetTipDeg - flexionStep);
+  } else if (flexionTargetTipDeg < 0.0f) {
+    flexionTargetTipDeg = fminf(0.0f, flexionTargetTipDeg + flexionStep);
+  }
+  // Also require the lead controller's OWN velocity estimate to have
+  // settled, not just the target value -- otherwise "home complete" can
+  // still fire while the servo is mid-overshoot from an earlier spike.
+  bool flexionThere = fabsf(flexionTargetTipDeg) <= homeFlexionToleranceDeg
+    && fabsf(flexionTargetVelocityDegPerSec) < 0.5f;
 
-  if (linearThere && rotationThere) {
+  if (linearThere && rotationThere && flexionThere) {
     homing = false;
     stopMotion();
     Serial.println("HOME complete");
@@ -580,6 +613,11 @@ void handleLine(char *line) {
 
     case 'H':
       homing = true;
+      // 0 is the sentinel updateHoming() checks for "first tick" -- forces
+      // it to skip stepping flexion on the very first call rather than
+      // compute a bogus dt (and therefore a bogus step size) against
+      // whenever homing last ran, possibly a long time ago.
+      homeFlexionLastStep_ms = 0;
       Serial.println("HOMING");
       return;
 
